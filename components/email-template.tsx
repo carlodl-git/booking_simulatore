@@ -29,6 +29,7 @@ export function BookingConfirmationEmail({
       case '18': return '18 buche'
       case 'pratica': return 'Campo Pratica'
       case 'mini-giochi': return 'Mini-giochi'
+      case 'lezione-maestro': return 'Lezione maestro'
       default: return type
     }
   }
@@ -137,6 +138,7 @@ export function AdminNotificationEmail({
       case '18': return '18 buche'
       case 'pratica': return 'Campo Pratica'
       case 'mini-giochi': return 'Mini-giochi'
+      case 'lezione-maestro': return 'Lezione maestro'
       default: return type
     }
   }

@@ -20,7 +20,7 @@ type BookingRow = {
   starts_at: string
   ends_at: string
   duration_minutes: number
-  activity_type: '9' | '18' | 'pratica' | 'mini-giochi'
+  activity_type: '9' | '18' | 'pratica' | 'mini-giochi' | 'lezione-maestro'
   players: number
   status: 'confirmed' | 'cancelled'
   notes: string | null
@@ -58,7 +58,7 @@ type HttpError = Error & {
  *   starts_at TIMESTAMPTZ NOT NULL,
  *   ends_at TIMESTAMPTZ NOT NULL,
  *   duration_minutes INTEGER NOT NULL,
- *   activity_type TEXT NOT NULL CHECK (activity_type IN ('9', '18', 'pratica', 'mini-giochi')),
+ *   activity_type TEXT NOT NULL CHECK (activity_type IN ('9', '18', 'pratica', 'mini-giochi', 'lezione-maestro')),
  *   players INTEGER NOT NULL CHECK (players >= 1 AND players <= 4),
  *   status TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'cancelled')),
  *   notes TEXT,
@@ -184,7 +184,7 @@ export async function createBookingTx({
   startsAt: string // ISO timestamp
   endsAt: string // ISO timestamp
   durationMinutes: number
-  activityType: '9' | '18' | 'pratica' | 'mini-giochi'
+  activityType: '9' | '18' | 'pratica' | 'mini-giochi' | 'lezione-maestro'
   players: number
   notes?: string
 }): Promise<Booking> {

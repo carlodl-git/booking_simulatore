@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DateTime } from "luxon"
-import { Download, Search, Filter, X, ArrowLeft } from "lucide-react"
+import { Download, Search, Filter, X, ArrowLeft, RefreshCw, LogOut } from "lucide-react"
 import { DatePicker } from "@/components/ui/date-picker"
 import Link from "next/link"
 
@@ -51,6 +51,7 @@ const formatActivityType = (type: string) => {
     case "18": return "18 buche"
     case "pratica": return "Campo Pratica"
     case "mini-giochi": return "Mini-giochi"
+    case "lezione-maestro": return "Lezione maestro"
     default: return type
   }
 }
@@ -71,7 +72,15 @@ export default function HistoricalBookingsPage() {
   const fetchBookings = useCallback(async () => {
     try {
       setLoading(true)
-      const response = await fetch("/api/admin/bookings")
+      // Add cache-busting to prevent stale data
+      const response = await fetch(`/api/admin/bookings?t=${Date.now()}`, {
+        cache: 'no-store',
+        credentials: 'include', // Include cookies in the request
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        }
+      })
       
       if (!response.ok) {
         throw new Error("Error fetching bookings")
@@ -141,7 +150,8 @@ export default function HistoricalBookingsPage() {
   const handleExportCSV = async () => {
     try {
       const response = await fetch("/api/admin/export-csv", {
-        method: "GET"
+        method: "GET",
+        credentials: 'include'
       })
 
       if (response.ok) {
@@ -158,6 +168,18 @@ export default function HistoricalBookingsPage() {
     } catch (error) {
       console.error("Error exporting CSV:", error)
       alert("Errore durante l'esportazione CSV")
+    }
+  }
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/admin/logout", { 
+        method: "POST",
+        credentials: 'include'
+      })
+      window.location.href = "/admin/login"
+    } catch (error) {
+      console.error("Error logging out:", error)
     }
   }
 
@@ -192,9 +214,17 @@ export default function HistoricalBookingsPage() {
                     Torna alle Prenotazioni
                   </Button>
                 </Link>
+                <Button onClick={fetchBookings} variant="outline" className="w-full md:w-auto">
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Aggiorna
+                </Button>
                 <Button onClick={handleExportCSV} className="w-full md:w-auto">
                   <Download className="mr-2 h-4 w-4" />
                   Esporta CSV
+                </Button>
+                <Button onClick={handleLogout} variant="outline" className="w-full md:w-auto">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Logout
                 </Button>
               </div>
             </div>

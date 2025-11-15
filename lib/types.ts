@@ -4,7 +4,7 @@ export type UserType = "socio" | "esterno"
 
 export type BookingStatus = "confirmed" | "cancelled"
 
-export type ActivityType = "9" | "18" | "pratica" | "mini-giochi"
+export type ActivityType = "9" | "18" | "pratica" | "mini-giochi" | "lezione-maestro"
 
 export interface Customer {
   id: string

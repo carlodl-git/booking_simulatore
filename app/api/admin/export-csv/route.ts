@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
 import { getAllBookings } from "@/lib/repo"
 
+// Force dynamic rendering - don't cache this route
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export async function GET() {
   try {
     const bookings = await getAllBookings(10000)
@@ -31,7 +35,8 @@ export async function GET() {
         "9": "9 buche",
         "18": "18 buche",
         "pratica": "Campo Pratica",
-        "mini-giochi": "Mini-giochi"
+        "mini-giochi": "Mini-giochi",
+        "lezione-maestro": "Lezione maestro"
       }
 
       return [

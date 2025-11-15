@@ -37,7 +37,7 @@ const bookingSchema = z.object({
     })
     .min(1, "Minimo 1 giocatore")
     .max(4, "Massimo 4 giocatori"),
-  holes: z.enum(["9", "18", "pratica", "mini-giochi"]).refine((val) => val !== undefined, {
+  holes: z.enum(["9", "18", "pratica", "mini-giochi", "lezione-maestro"]).refine((val) => val !== undefined, {
     message: "Seleziona il tipo di attività",
   }),
   duration: z.enum(["1", "1.5", "2", "2.5", "3", "3.5", "4"]).refine((val) => val !== undefined, {
@@ -54,8 +54,12 @@ type BookingFormValues = z.infer<typeof bookingSchema>
 // Restituisce il valore da usare nel select (1, 1.5, 2, 2.5, 3, 3.5, 4)
 function calculateDuration(
   players: number,
-  holes: "9" | "18" | "pratica" | "mini-giochi"
+  holes: "9" | "18" | "pratica" | "mini-giochi" | "lezione-maestro"
 ): string {
+  // Per lezione maestro, durata consigliata: 1h
+  if (holes === "lezione-maestro") {
+    return "1"
+  }
   // Calcolo durata consigliata solo per 9 e 18 buche
   if (holes === "9" || holes === "18") {
     if (players === 1) {
@@ -177,7 +181,7 @@ export default function BookPage() {
     if (players && holes) {
       const calculatedDuration = calculateDuration(
         players,
-        holes as "9" | "18" | "pratica" | "mini-giochi"
+        holes as "9" | "18" | "pratica" | "mini-giochi" | "lezione-maestro"
       )
       
       const recommendedDuration = calculatedDuration
@@ -405,7 +409,7 @@ export default function BookPage() {
               <Select
                 value={watch("holes")}
                 onValueChange={(value) =>
-                  setValue("holes", value as "9" | "18" | "pratica" | "mini-giochi")
+                  setValue("holes", value as "9" | "18" | "pratica" | "mini-giochi" | "lezione-maestro")
                 }
               >
                 <SelectTrigger id="holes">
@@ -416,6 +420,7 @@ export default function BookPage() {
                   <SelectItem value="18">18 buche</SelectItem>
                   <SelectItem value="pratica">Campo Pratica</SelectItem>
                   <SelectItem value="mini-giochi">Mini-giochi</SelectItem>
+                  <SelectItem value="lezione-maestro">Lezione maestro</SelectItem>
                 </SelectContent>
               </Select>
               {errors.holes && (
@@ -489,11 +494,19 @@ export default function BookPage() {
                   </div>
                 )}
                 {!availabilityError && selectedTime && selectedDuration && (
-                  <div className="mt-3 p-3 rounded-md bg-teal-50 border border-teal-200">
-                    <p className="text-sm text-teal-800 font-medium">
-                      ✓ Tutti gli slot sono disponibili
-                    </p>
-                  </div>
+                  <>
+                    <div className="mt-3 p-3 rounded-md bg-teal-50 border border-teal-200">
+                      <p className="text-sm text-teal-800 font-medium">
+                        ✓ Tutti gli slot sono disponibili
+                      </p>
+                    </div>
+                    {/* Box informativo sul costo */}
+                    <div className="mt-4 rounded-lg border border-teal-200 bg-teal-50 p-4">
+                      <p className="text-sm text-teal-800">
+                        <span className="font-semibold">💰 Tariffa:</span> Il costo del simulatore è di <span className="font-bold">20€ l'ora</span> per i soci e <span className="font-bold">25€ l'ora</span> per i non soci, indipendentemente dal numero di giocatori.
+                      </p>
+                    </div>
+                  </>
                 )}
               </div>
             )}

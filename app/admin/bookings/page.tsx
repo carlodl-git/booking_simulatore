@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DateTime } from "luxon"
-import { Calendar, X, Download, Search, Filter, List, Grid } from "lucide-react"
+import { Calendar, X, Download, Search, Filter, List, Grid, RefreshCw, LogOut } from "lucide-react"
 import { DatePicker } from "@/components/ui/date-picker"
 import { CalendarView } from "@/components/admin/CalendarView"
 import Link from "next/link"
@@ -52,6 +52,7 @@ const formatActivityType = (type: string) => {
     case "18": return "18 buche"
     case "pratica": return "Campo Pratica"
     case "mini-giochi": return "Mini-giochi"
+    case "lezione-maestro": return "Lezione maestro"
     default: return type
   }
 }
@@ -73,14 +74,24 @@ export default function AdminBookingsPage() {
   const fetchBookings = useCallback(async () => {
     try {
       setLoading(true)
-      const response = await fetch("/api/admin/bookings")
+      // Add cache-busting to prevent stale data
+      const response = await fetch(`/api/admin/bookings?t=${Date.now()}`, {
+        cache: 'no-store',
+        credentials: 'include', // Include cookies in the request
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        }
+      })
       
       if (!response.ok) {
         throw new Error("Error fetching bookings")
       }
       
       const data = await response.json()
-      setBookings(data.bookings || [])
+      const fetchedBookings = data.bookings || []
+      console.log('Fetched bookings:', fetchedBookings.length, fetchedBookings)
+      setBookings(fetchedBookings)
     } catch (error) {
       console.error("Error fetching bookings:", error)
     } finally {
@@ -91,10 +102,16 @@ export default function AdminBookingsPage() {
   const applyFilters = useCallback(() => {
     // Filter out past bookings first
     const today = DateTime.now().setZone("Europe/Rome").startOf("day")
+    console.log('Today (Europe/Rome):', today.toISO())
     let filtered = bookings.filter(booking => {
       const bookingDate = DateTime.fromISO(booking.date).setZone("Europe/Rome").startOf("day")
-      return bookingDate >= today
+      const isFuture = bookingDate >= today
+      if (!isFuture) {
+        console.log('Filtered out past booking:', booking.date, bookingDate.toISO(), 'vs', today.toISO())
+      }
+      return isFuture
     })
+    console.log('Total bookings:', bookings.length, 'After date filter:', filtered.length)
 
     // Search filter
     if (searchQuery) {
@@ -146,6 +163,7 @@ export default function AdminBookingsPage() {
     try {
       const response = await fetch(`/api/bookings/${selectedBooking.id}`, {
         method: "PATCH",
+        credentials: 'include',
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "cancelled" })
       })
@@ -165,7 +183,8 @@ export default function AdminBookingsPage() {
   const handleExportCSV = async () => {
     try {
       const response = await fetch("/api/admin/export-csv", {
-        method: "GET"
+        method: "GET",
+        credentials: 'include'
       })
 
       if (response.ok) {
@@ -182,6 +201,18 @@ export default function AdminBookingsPage() {
     } catch (error) {
       console.error("Error exporting CSV:", error)
       alert("Errore durante l'esportazione CSV")
+    }
+  }
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/admin/logout", { 
+        method: "POST",
+        credentials: 'include'
+      })
+      window.location.href = "/admin/login"
+    } catch (error) {
+      console.error("Error logging out:", error)
     }
   }
 
@@ -209,10 +240,20 @@ export default function AdminBookingsPage() {
                 <CardTitle className="text-2xl font-bold">Gestione Prenotazioni</CardTitle>
                 <CardDescription>Montecchia Performance Center - TrackMan iO Simulator</CardDescription>
               </div>
-              <Button onClick={handleExportCSV} className="w-full md:w-auto">
-                <Download className="mr-2 h-4 w-4" />
-                Esporta CSV
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={fetchBookings} variant="outline" className="w-full md:w-auto">
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Aggiorna
+                </Button>
+                <Button onClick={handleExportCSV} className="w-full md:w-auto">
+                  <Download className="mr-2 h-4 w-4" />
+                  Esporta CSV
+                </Button>
+                <Button onClick={handleLogout} variant="outline" className="w-full md:w-auto">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Logout
+                </Button>
+              </div>
             </div>
           </CardHeader>
         </Card>

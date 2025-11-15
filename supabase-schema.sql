@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   starts_at TIMESTAMPTZ NOT NULL,
   ends_at TIMESTAMPTZ NOT NULL,
   duration_minutes INTEGER NOT NULL CHECK (duration_minutes > 0),
-  activity_type TEXT NOT NULL CHECK (activity_type IN ('9', '18', 'pratica', 'mini-giochi')),
+  activity_type TEXT NOT NULL CHECK (activity_type IN ('9', '18', 'pratica', 'mini-giochi', 'lezione-maestro')),
   players INTEGER NOT NULL CHECK (players >= 1 AND players <= 4),
   status TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'cancelled')),
   notes TEXT,
