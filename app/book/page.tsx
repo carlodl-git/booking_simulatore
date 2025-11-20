@@ -40,7 +40,7 @@ const bookingSchema = z.object({
   holes: z.enum(["9", "18", "pratica", "mini-giochi", "lezione-maestro"]).refine((val) => val !== undefined, {
     message: "Seleziona il tipo di attività",
   }),
-  duration: z.enum(["1", "1.5", "2", "2.5", "3", "3.5", "4"]).refine((val) => val !== undefined, {
+  duration: z.enum(["0.5", "1", "1.5", "2", "2.5", "3", "3.5", "4"]).refine((val) => val !== undefined, {
     message: "Seleziona la durata",
   }),
   privacyAccepted: z.boolean().refine((val) => val === true, {
@@ -75,9 +75,20 @@ function calculateDuration(
   return "1"
 }
 
-// Formatta la durata per la visualizzazione (es. "1h", "1.5h")
+// Formatta la durata per la visualizzazione (es. "30 min", "1h", "1.5h")
 function formatDuration(duration: string): string {
+  if (duration === "0.5") {
+    return "30 min"
+  }
   return duration.includes(".") ? `${duration}h` : `${duration}h`
+}
+
+// Converte una Date in formato YYYY-MM-DD preservando il timezone locale
+function formatDateLocal(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 // Calcola l'orario finale aggiungendo la durata all'orario iniziale
@@ -138,6 +149,9 @@ function checkAvailability(
 }
 
 export default function BookPage() {
+  // DEBUG: Verifica che il codice aggiornato venga eseguito
+  console.log("BookPage component loaded - Version: 2025-01-15 - lezione-maestro included")
+  
   const [duration, setDuration] = useState<string>("")
   const [occupiedSlots, setOccupiedSlots] = useState<string[]>([])
   const [availabilityError, setAvailabilityError] = useState<string>("")
@@ -172,6 +186,15 @@ export default function BookPage() {
   const selectedDate = watch("date")
   const selectedTime = watch("time")
   const selectedDuration = watch("duration")
+  
+  // Log quando selectedDate cambia
+  useEffect(() => {
+    console.log('[BookPage] selectedDate cambiato:', selectedDate)
+    if (selectedDate) {
+      console.log('[BookPage] selectedDate ISO:', selectedDate.toISOString())
+      console.log('[BookPage] selectedDate string:', formatDateLocal(selectedDate))
+    }
+  }, [selectedDate])
 
   const canConfirm = Boolean(selectedDate && selectedTime && selectedDuration && !availabilityError)
 
@@ -192,7 +215,7 @@ export default function BookPage() {
       if (!selectedDuration) {
         setValue(
           "duration",
-          recommendedDuration as "1" | "1.5" | "2" | "2.5" | "3" | "3.5" | "4"
+          recommendedDuration as "0.5" | "1" | "1.5" | "2" | "2.5" | "3" | "3.5" | "4"
         )
       }
     } else {
@@ -227,6 +250,7 @@ export default function BookPage() {
 
   // Carica gli slot occupati quando cambia la data
   useEffect(() => {
+    console.log('[BookPage] useEffect triggered - selectedDate:', selectedDate)
     if (selectedDate) {
       // Reset del time selezionato quando cambia la data
       setValue("time", "")
@@ -236,18 +260,45 @@ export default function BookPage() {
       const durationMinutes = 60
       
       // Carica gli slot occupati dall'API
-      const dateString = selectedDate.toISOString().split('T')[0]
+      // Usa la data locale invece di UTC per evitare problemi di timezone
+      const dateString = formatDateLocal(selectedDate)
+      console.log('[BookPage] ⚠️ INIZIO FETCH per data:', dateString)
       setSlotsLoading(true)
-      fetch(`/api/availability?date=${dateString}&durationMinutes=${durationMinutes}&resourceId=trackman-io`)
-        .then(res => res.json())
+      
+      console.log('[BookPage] Caricamento slot per data:', dateString)
+      
+      // Aggiungi cache-busting per evitare dati cached
+      const apiUrl = `/api/availability?date=${dateString}&durationMinutes=${durationMinutes}&resourceId=trackman-io&t=${Date.now()}`
+      console.log('[BookPage] Chiamata API:', apiUrl)
+      
+      fetch(apiUrl, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        }
+      })
+        .then(res => {
+          console.log('[BookPage] Risposta API status:', res.status, res.statusText)
+          if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`)
+          }
+          return res.json()
+        })
         .then(data => {
+          console.log('[BookPage] Dati ricevuti dall\'API:', data)
+          console.log('[BookPage] Slot occupati caricati:', data.allOccupiedSlots?.length || 0, 'per data:', dateString)
+          console.log('[BookPage] Slot occupati:', data.allOccupiedSlots)
           setOccupiedSlots(data.allOccupiedSlots || [])
         })
         .catch(err => {
-          console.error('Errore nel caricamento disponibilità:', err)
+          console.error('[BookPage] Errore nel caricamento disponibilità:', err)
           setOccupiedSlots([])
         })
-        .finally(() => setSlotsLoading(false))
+        .finally(() => {
+          console.log('[BookPage] Caricamento completato')
+          setSlotsLoading(false)
+        })
     } else {
       setOccupiedSlots([])
       setValue("time", "")
@@ -352,7 +403,13 @@ export default function BookPage() {
               </Label>
               <DatePicker
                 date={watch("date")}
-                onDateChange={(date) => setValue("date", date as Date)}
+                onDateChange={(date) => {
+                  console.log('[BookPage] DatePicker onDateChange chiamato con:', date)
+                  if (date) {
+                    console.log('[BookPage] Impostazione data:', formatDateLocal(date))
+                  }
+                  setValue("date", date as Date)
+                }}
                 placeholder="Seleziona una data"
               />
               {errors.date && (
@@ -421,6 +478,7 @@ export default function BookPage() {
                   <SelectItem value="pratica">Campo Pratica</SelectItem>
                   <SelectItem value="mini-giochi">Mini-giochi</SelectItem>
                   <SelectItem value="lezione-maestro">Lezione maestro</SelectItem>
+                  {/* DEBUG: Versione aggiornata - 2025-01-15 */}
                 </SelectContent>
               </Select>
               {errors.holes && (
@@ -438,7 +496,7 @@ export default function BookPage() {
                 onValueChange={(value) =>
                   setValue(
                     "duration",
-                    value as "1" | "1.5" | "2" | "2.5" | "3" | "3.5" | "4"
+                    value as "0.5" | "1" | "1.5" | "2" | "2.5" | "3" | "3.5" | "4"
                   )
                 }
               >
@@ -446,13 +504,20 @@ export default function BookPage() {
                   <SelectValue placeholder="Seleziona la durata" />
                 </SelectTrigger>
                 <SelectContent>
+                  {holes === "lezione-maestro" && (
+                    <SelectItem value="0.5">30 minuti</SelectItem>
+                  )}
                   <SelectItem value="1">1 ora</SelectItem>
+                  {holes !== "lezione-maestro" && (
+                    <>
                   <SelectItem value="1.5">1.5 ore</SelectItem>
                   <SelectItem value="2">2 ore</SelectItem>
                   <SelectItem value="2.5">2.5 ore</SelectItem>
                   <SelectItem value="3">3 ore</SelectItem>
                   <SelectItem value="3.5">3.5 ore</SelectItem>
                   <SelectItem value="4">4 ore</SelectItem>
+                    </>
+                  )}
                 </SelectContent>
               </Select>
               {errors.duration && (
@@ -495,17 +560,19 @@ export default function BookPage() {
                 )}
                 {!availabilityError && selectedTime && selectedDuration && (
                   <>
-                    <div className="mt-3 p-3 rounded-md bg-teal-50 border border-teal-200">
-                      <p className="text-sm text-teal-800 font-medium">
-                        ✓ Tutti gli slot sono disponibili
-                      </p>
-                    </div>
-                    {/* Box informativo sul costo */}
-                    <div className="mt-4 rounded-lg border border-teal-200 bg-teal-50 p-4">
-                      <p className="text-sm text-teal-800">
-                        <span className="font-semibold">💰 Tariffa:</span> Il costo del simulatore è di <span className="font-bold">20€ l'ora</span> per i soci e <span className="font-bold">25€ l'ora</span> per i non soci, indipendentemente dal numero di giocatori.
-                      </p>
-                    </div>
+                  <div className="mt-3 p-3 rounded-md bg-teal-50 border border-teal-200">
+                    <p className="text-sm text-teal-800 font-medium">
+                      ✓ Tutti gli slot sono disponibili
+                    </p>
+                  </div>
+                    {/* Box informativo sul costo - nascosto per lezione maestro */}
+                    {holes !== "lezione-maestro" && (
+                      <div className="mt-4 rounded-lg border border-teal-200 bg-teal-50 p-4">
+                        <p className="text-sm text-teal-800">
+                          <span className="font-semibold">💰 Tariffa:</span> Il costo del simulatore è di <span className="font-bold">20€ l&apos;ora</span> per i soci e <span className="font-bold">25€ l&apos;ora</span> per i non soci, indipendentemente dal numero di giocatori.
+                        </p>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
