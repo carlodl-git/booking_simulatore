@@ -24,6 +24,10 @@ type BookingRow = {
   players: number
   status: 'confirmed' | 'cancelled'
   notes: string | null
+  customer_first_name: string | null
+  customer_last_name: string | null
+  customer_phone: string | null
+  customer_user_type: 'socio' | 'esterno' | null
   created_at: string
   updated_at: string
 }
@@ -178,6 +182,10 @@ export async function createBookingTx({
   activityType,
   players,
   notes,
+  customerFirstName,
+  customerLastName,
+  customerPhone,
+  customerUserType,
 }: {
   resourceId: string
   customerId: string
@@ -187,6 +195,10 @@ export async function createBookingTx({
   activityType: '9' | '18' | 'pratica' | 'mini-giochi' | 'lezione-maestro'
   players: number
   notes?: string
+  customerFirstName?: string
+  customerLastName?: string
+  customerPhone?: string
+  customerUserType?: 'socio' | 'esterno'
 }): Promise<Booking> {
   const { data, error } = await supabaseAdmin
     .from('bookings')
@@ -200,6 +212,10 @@ export async function createBookingTx({
       players: players,
       status: 'confirmed',
       notes: notes || null,
+      customer_first_name: customerFirstName || null,
+      customer_last_name: customerLastName || null,
+      customer_phone: customerPhone || null,
+      customer_user_type: customerUserType || null,
     })
     .select()
     .single()
@@ -278,10 +294,36 @@ export async function getAllBookings(limit: number = 1000): Promise<BookingWithC
   }
 
   const rows = (data ?? []) as BookingWithCustomerRow[]
-  return rows.map(row => ({
-    ...mapBookingFromDB(row),
-    customer: mapCustomerFromDB(row.customer),
-  }))
+  return rows.map(row => {
+    const booking = mapBookingFromDB(row)
+    const customer = mapCustomerFromDB(row.customer)
+    applySnapshotToCustomer(row, customer)
+    return {
+      ...booking,
+      customer,
+    }
+  })
+}
+
+/**
+ * Applica eventuali snapshot del customer registrati nella prenotazione
+ */
+function applySnapshotToCustomer(row: BookingWithCustomerRow, customer: Customer) {
+  if (row.customer_first_name) {
+    customer.firstName = row.customer_first_name
+  }
+
+  if (row.customer_last_name) {
+    customer.lastName = row.customer_last_name
+  }
+
+  if (row.customer_phone) {
+    customer.phone = row.customer_phone
+  }
+
+  if (row.customer_user_type) {
+    customer.userType = row.customer_user_type
+  }
 }
 
 /**

@@ -32,6 +32,10 @@ CREATE TABLE IF NOT EXISTS bookings (
   players INTEGER NOT NULL CHECK (players >= 1 AND players <= 4),
   status TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'cancelled')),
   notes TEXT,
+  customer_first_name TEXT,
+  customer_last_name TEXT,
+  customer_phone TEXT,
+  customer_user_type TEXT CHECK (customer_user_type IN ('socio', 'esterno')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   

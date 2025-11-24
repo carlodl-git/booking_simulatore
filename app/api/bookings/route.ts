@@ -8,6 +8,7 @@ import { Resend } from "resend"
 import { BookingConfirmationEmail, AdminNotificationEmail } from "@/components/email-template"
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
+console.log('Resend inizializzato:', resend ? 'SÌ' : 'NO', 'RESEND_API_KEY presente:', !!process.env.RESEND_API_KEY)
 
 /**
  * Converte date e time in un timestamp ISO usando Europe/Rome timezone
@@ -85,6 +86,10 @@ export async function POST(request: NextRequest) {
       activityType: body.activityType,
       players: body.players,
       notes: body.notes,
+      customerFirstName: body.customer.firstName,
+      customerLastName: body.customer.lastName,
+      customerPhone: body.customer.phone,
+      customerUserType: body.customer.userType,
     })
 
     const response: CreateBookingResponse = {
@@ -94,6 +99,8 @@ export async function POST(request: NextRequest) {
 
     // Invia email di conferma al cliente e notifica all'admin
     // Solo se Resend è configurato
+    console.log('Controllo Resend - resend object:', resend ? 'presente' : 'null')
+    console.log('RESEND_API_KEY env var:', process.env.RESEND_API_KEY ? 'presente' : 'NON presente')
     if (resend) {
       console.log('Resend configurato, invio email...')
       try {
@@ -103,10 +110,30 @@ export async function POST(request: NextRequest) {
           ? `${durationHours}h ${durationMinutes}min` 
           : `${durationHours}h`
 
-        console.log('Invio email cliente a:', customer.email)
+        // FORZA l'uso del dominio verificato - NON usare mai onboarding@resend.dev
+        // Su Plesk le variabili d'ambiente potrebbero non essere lette correttamente
+        const verifiedDomainEmail = 'Montecchia Performance Center <noreply@montecchiaperformancecenter.it>'
+        let fromEmail = process.env.RESEND_FROM_EMAIL || verifiedDomainEmail
+        
+        // SICUREZZA: Se contiene onboarding@resend.dev, forza SEMPRE il dominio verificato
+        if (fromEmail.includes('onboarding@resend.dev') || fromEmail.includes('resend.dev')) {
+          console.warn('⚠️ ATTENZIONE: Trovato dominio resend.dev, forzo uso dominio verificato')
+          fromEmail = verifiedDomainEmail
+        }
+        
+        // Assicurati che usi sempre il dominio verificato
+        if (!fromEmail.includes('montecchiaperformancecenter.it')) {
+          console.warn('⚠️ ATTENZIONE: From email non usa dominio verificato, forzo correzione')
+          fromEmail = verifiedDomainEmail
+        }
+        
+        console.log('🔍 DEBUG EMAIL CONFIG:')
+        console.log('  RESEND_FROM_EMAIL env var:', process.env.RESEND_FROM_EMAIL || 'NON IMPOSTATO (userà default)')
+        console.log('  From email che verrà usato:', fromEmail)
+        console.log('  Invio email cliente a:', customer.email)
         // Email al cliente
         resend.emails.send({
-          from: 'Montecchia Performance Center <onboarding@resend.dev>',
+          from: fromEmail,
           to: [customer.email],
           subject: '✓ Conferma Prenotazione TrackMan iO - Montecchia Performance Center',
           html: BookingConfirmationEmail({
@@ -121,15 +148,21 @@ export async function POST(request: NextRequest) {
             activityType: booking.activityType,
             userType: customer.userType,
           }),
-        }).then(result => console.log('Email cliente inviata:', result))
-          .catch(emailError => console.error('Errore invio email cliente:', emailError))
+        }).then(result => {
+          console.log('✅ Email cliente inviata con successo:', JSON.stringify(result, null, 2))
+        })
+          .catch(emailError => {
+          console.error('❌ Errore invio email cliente:', emailError)
+          console.error('Dettagli errore:', JSON.stringify(emailError, null, 2))
+        })
 
-        const adminEmail = process.env.ADMIN_EMAIL || 'admin@montecchia-performance.com'
+        const adminEmail = process.env.ADMIN_EMAIL || 'info@montecchiaperformancecenter.it'
+        console.log('ADMIN_EMAIL env var:', process.env.ADMIN_EMAIL)
         console.log('Invio email admin a:', adminEmail)
         // Email all'admin
         resend.emails.send({
-          from: 'Montecchia Performance Center <onboarding@resend.dev>',
-          to: [process.env.ADMIN_EMAIL || 'admin@montecchia-performance.com'],
+          from: fromEmail,
+          to: [adminEmail],
           subject: '📅 Nuova Prenotazione TrackMan iO',
           html: AdminNotificationEmail({
             firstName: customer.firstName,
@@ -145,11 +178,20 @@ export async function POST(request: NextRequest) {
             email: customer.email,
             phone: customer.phone,
           }),
-        }).then(result => console.log('Email admin inviata:', result))
-        .catch(emailError => console.error('Errore invio email admin:', emailError))
+        }).then(result => {
+          console.log('✅ Email admin inviata con successo:', JSON.stringify(result, null, 2))
+        })
+        .catch(emailError => {
+          console.error('❌ Errore invio email admin:', emailError)
+          console.error('Dettagli errore:', JSON.stringify(emailError, null, 2))
+        })
       } catch (emailError) {
         // Log l'errore ma non bloccare la risposta
-        console.error('Errore nella configurazione email:', emailError)
+        console.error('❌ Errore nella configurazione email:', emailError)
+        console.error('Dettagli errore completo:', JSON.stringify(emailError, null, 2))
+        if (emailError instanceof Error) {
+          console.error('Stack trace:', emailError.stack)
+        }
       }
     } else {
       console.log('Resend NON configurato - salto invio email')

@@ -148,6 +148,39 @@ function checkAvailability(
   }
 }
 
+// Helper function to submit booking - separated to avoid Next.js build issues
+async function submitBookingRequest(bookingData: {
+  customer: {
+    firstName: string
+    lastName: string
+    email: string
+    phone?: string
+    userType: "socio" | "esterno"
+  }
+  startsAt: string
+  durationMinutes: number
+  activityType: string
+  players: number
+  resourceId: string
+}) {
+  const httpMethod = 'POST' as const
+  const response = await fetch('/api/bookings', {
+    method: httpMethod,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(bookingData),
+  })
+  
+  if (!response.ok) {
+    const errorData = await response.json()
+    throw new Error(errorData.error || 'Errore durante l\'invio della prenotazione')
+  }
+  
+  return response.json()
+}
+
+// This is a Next.js Page component - no route handlers should be exported from this file
 export default function BookPage() {
   // DEBUG: Verifica che il codice aggiornato venga eseguito
   console.log("BookPage component loaded - Version: 2025-01-15 - lezione-maestro included")
@@ -338,21 +371,8 @@ export default function BookPage() {
         resourceId: "trackman-io",
       }
       
-      // Invia la richiesta all'API
-      const response = await fetch('/api/bookings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(bookingData),
-      })
-      
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Errore durante l\'invio della prenotazione')
-      }
-      
-      const result = await response.json()
+      // Invia la richiesta all'API usando la funzione helper
+      const result = await submitBookingRequest(bookingData)
       console.log('Booking created:', result)
       
       // Redirect alla pagina di successo con recap
