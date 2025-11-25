@@ -322,7 +322,21 @@ export default function BookPage() {
           console.log('[BookPage] Dati ricevuti dall\'API:', data)
           console.log('[BookPage] Slot occupati caricati:', data.allOccupiedSlots?.length || 0, 'per data:', dateString)
           console.log('[BookPage] Slot occupati:', data.allOccupiedSlots)
-          setOccupiedSlots(data.allOccupiedSlots || [])
+          
+          // Assicurati che allOccupiedSlots sia un array
+          const slots = Array.isArray(data.allOccupiedSlots) ? data.allOccupiedSlots : []
+          
+          // Normalizza gli slot per assicurarsi che siano nel formato HH:mm
+          const normalizedSlots = slots.map((slot: string) => {
+            if (typeof slot === 'string') {
+              // Rimuovi eventuali secondi o millisecondi (es. "10:00:00" -> "10:00")
+              return slot.split(':').slice(0, 2).join(':')
+            }
+            return slot
+          })
+          
+          console.log('[BookPage] Impostazione occupiedSlots con', normalizedSlots.length, 'slot normalizzati:', normalizedSlots)
+          setOccupiedSlots(normalizedSlots)
         })
         .catch(err => {
           console.error('[BookPage] Errore nel caricamento disponibilità:', err)
