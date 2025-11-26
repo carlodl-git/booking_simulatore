@@ -4,6 +4,7 @@ import { calculateAvailableSlots, calculateAllOccupiedSlots } from "@/lib/availa
 import { AvailabilityResponse, BlackoutPeriod } from "@/lib/types"
 
 export const dynamic = "force-dynamic"
+export const revalidate = 0
 
 export async function GET(request: NextRequest) {
   try {
@@ -57,7 +58,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Recupera bookings da Supabase per la data specificata
+    console.log('[API Availability] Richiesta disponibilità per:', { date, duration, resourceId })
     const bookings = await getBookingsForDate(resourceId, date)
+    console.log('[API Availability] Bookings recuperati:', bookings.length)
     
     // Per ora blackouts sono vuoti (non ancora implementati in Supabase)
     const blackouts: BlackoutPeriod[] = []
@@ -73,6 +76,10 @@ export async function GET(request: NextRequest) {
 
     // Calcola tutti gli slot occupati (indipendentemente dalla durata)
     const allOccupiedSlots = calculateAllOccupiedSlots(date, bookings, resourceId)
+    console.log('[API Availability] Slot occupati calcolati:', {
+      allOccupiedSlots: allOccupiedSlots.length,
+      allOccupiedSlotsArray: allOccupiedSlots,
+    })
 
     const response: AvailabilityResponse = {
       date,
@@ -82,7 +89,15 @@ export async function GET(request: NextRequest) {
       allOccupiedSlots,
     }
 
-    return NextResponse.json(response)
+    // Disabilita cache per assicurarsi che i dati siano sempre freschi
+    return NextResponse.json(response, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Surrogate-Control': 'no-store',
+      },
+    })
   } catch (error: unknown) {
     console.error("Errore nel calcolo disponibilità:", error)
 

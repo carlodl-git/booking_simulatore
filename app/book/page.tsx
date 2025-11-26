@@ -301,14 +301,18 @@ export default function BookPage() {
       console.log('[BookPage] Caricamento slot per data:', dateString)
       
       // Aggiungi cache-busting per evitare dati cached
-      const apiUrl = `/api/availability?date=${dateString}&durationMinutes=${durationMinutes}&resourceId=trackman-io&t=${Date.now()}`
+      const timestamp = Date.now()
+      const apiUrl = `/api/availability?date=${dateString}&durationMinutes=${durationMinutes}&resourceId=trackman-io&t=${timestamp}`
       console.log('[BookPage] Chiamata API:', apiUrl)
+      console.log('[BookPage] Timestamp cache-busting:', timestamp)
       
       fetch(apiUrl, {
         cache: 'no-store',
+        method: 'GET',
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Pragma': 'no-cache',
+          'Expires': '0',
         }
       })
         .then(res => {

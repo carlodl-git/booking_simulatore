@@ -86,12 +86,20 @@ export async function getBookingsForDate(
   resourceId: string,
   dateISO: string
 ): Promise<Booking[]> {
-  // Calcola inizio e fine del giorno in UTC
-  const dateStart = new Date(dateISO)
-  dateStart.setHours(0, 0, 0, 0)
+  // Usa Luxon per gestire correttamente il timezone Europe/Rome
+  // La data viene passata come YYYY-MM-DD, la interpretiamo come data locale in Europe/Rome
+  const dateObj = DateTime.fromISO(dateISO, { zone: 'Europe/Rome' })
   
-  const dateEnd = new Date(dateISO)
-  dateEnd.setHours(23, 59, 59, 999)
+  // Calcola inizio e fine del giorno in Europe/Rome
+  const dateStart = dateObj.startOf('day').toUTC()
+  const dateEnd = dateObj.endOf('day').toUTC()
+
+  console.log('[getBookingsForDate] Ricerca bookings per:', {
+    resourceId,
+    dateISO,
+    dateStart: dateStart.toISO(),
+    dateEnd: dateEnd.toISO(),
+  })
 
   const { data, error } = await supabaseAdmin
     .from('bookings')
@@ -111,8 +119,8 @@ export async function getBookingsForDate(
     `)
     .eq('resource_id', resourceId)
     .eq('status', 'confirmed')
-    .gte('starts_at', dateStart.toISOString())
-    .lte('starts_at', dateEnd.toISOString())
+    .gte('starts_at', dateStart.toISO()!)
+    .lte('starts_at', dateEnd.toISO()!)
     .order('starts_at', { ascending: true })
 
   if (error) {
@@ -120,9 +128,28 @@ export async function getBookingsForDate(
     throw new Error(`Errore database: ${error.message}`)
   }
 
+  console.log('[getBookingsForDate] Bookings trovati:', (data ?? []).length)
+  if (data && data.length > 0) {
+    console.log('[getBookingsForDate] Primi bookings:', data.slice(0, 3).map(b => ({
+      id: b.id,
+      starts_at: b.starts_at,
+      ends_at: b.ends_at,
+    })))
+  }
+
   // Mappa i dati da Supabase al formato Booking
   const rows = (data ?? []) as BookingRow[]
-  return rows.map(mapBookingFromDB)
+  const bookings = rows.map(mapBookingFromDB)
+  console.log('[getBookingsForDate] Bookings mappati:', bookings.length)
+  if (bookings.length > 0) {
+    console.log('[getBookingsForDate] Primo booking mappato:', {
+      date: bookings[0].date,
+      startTime: bookings[0].startTime,
+      endTime: bookings[0].endTime,
+    })
+  }
+  
+  return bookings
 }
 
 /**
