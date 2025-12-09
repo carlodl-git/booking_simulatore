@@ -5,8 +5,13 @@ export function middleware(request: NextRequest) {
   const host = request.headers.get('host') || ''
   
   // Lista di host admin autorizzati (match esatto per sicurezza)
+  // Include anche localhost per sviluppo
   const allowedAdminHosts = [
     'admin.booking.montecchiaperformancecenter.it',
+    'localhost:3000',
+    'localhost:3001',
+    '127.0.0.1:3000',
+    '127.0.0.1:3001',
   ]
   
   // Se l'accesso è da un host admin autorizzato

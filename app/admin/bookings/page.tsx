@@ -89,8 +89,11 @@ export default function AdminBookingsPage() {
     try {
       setLoading(true)
       // Lascia che la cache del server gestisca la validità dei dati
-      const response = await fetch(`/api/admin/bookings`, {
+      // Aggiungi timestamp per evitare cache del browser in sviluppo
+      const cacheBuster = process.env.NODE_ENV === 'development' ? `&_t=${Date.now()}` : ''
+      const response = await fetch(`/api/admin/bookings${cacheBuster}`, {
         credentials: 'include', // Include cookies in the request
+        cache: 'no-store', // Disabilita cache del browser per admin
       })
       
       if (!response.ok) {

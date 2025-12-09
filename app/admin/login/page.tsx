@@ -28,11 +28,14 @@ export default function AdminLoginPage() {
       })
 
       if (response.ok) {
+        // Attendi un momento per assicurarsi che il cookie sia impostato
+        await new Promise(resolve => setTimeout(resolve, 100))
         router.push("/admin/bookings")
         router.refresh()
       } else {
         const data = await response.json()
         setError(data.error || "Credenziali non valide")
+        console.error('[Login] Errore login:', data)
       }
     } catch {
       setError("Errore durante il login")

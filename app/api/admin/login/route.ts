@@ -15,11 +15,24 @@ export async function POST(request: Request) {
     const ADMIN_USERNAME = process.env.ADMIN_USERNAME
     const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
 
+    // Debug: log in sviluppo per verificare configurazione (senza esporre password)
+    const isDevelopment = process.env.NODE_ENV === 'development'
+    if (isDevelopment) {
+      console.log('[Login API] Debug:', {
+        hasUsername: !!ADMIN_USERNAME,
+        hasPassword: !!ADMIN_PASSWORD,
+        usernameLength: ADMIN_USERNAME?.length || 0,
+        passwordLength: ADMIN_PASSWORD?.length || 0,
+        receivedUsername: username,
+        receivedUsernameLength: username?.length || 0,
+      })
+    }
+
     // Verifica che le credenziali siano configurate
     if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
       console.error('[Login API] Credenziali admin non configurate')
       return NextResponse.json(
-        { error: "Configurazione server non valida" },
+        { error: "Configurazione server non valida. Verifica che ADMIN_USERNAME e ADMIN_PASSWORD siano configurate nelle variabili d'ambiente." },
         { status: 500 }
       )
     }
