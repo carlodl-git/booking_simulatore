@@ -37,10 +37,14 @@ export async function POST(request: Request) {
       // Imposta un cookie di sessione valido per 24 ore
       const cookieStore = await cookies()
       const isProduction = process.env.NODE_ENV === 'production'
+      // Usa secure se HTTPS o in produzione (più robusto)
+      const requestUrl = request.headers.get('referer') || request.url || ''
+      const isHTTPS = requestUrl.startsWith('https://')
+      const shouldUseSecure = isHTTPS || isProduction
       
       cookieStore.set("admin-auth", "authenticated", {
         httpOnly: true,
-        secure: isProduction, // Secure solo in produzione (richiede HTTPS)
+        secure: shouldUseSecure, // Secure se HTTPS disponibile o in produzione
         sameSite: "lax",
         maxAge: 60 * 60 * 24, // 24 ore
         path: "/",

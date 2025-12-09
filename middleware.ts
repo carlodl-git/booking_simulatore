@@ -4,8 +4,13 @@ import type { NextRequest } from 'next/server'
 export function middleware(request: NextRequest) {
   const host = request.headers.get('host') || ''
   
-  // Se l'accesso è da admin.booking.montecchiaperformancecenter.it
-  if (host.startsWith('admin.booking.montecchiaperformancecenter.it')) {
+  // Lista di host admin autorizzati (match esatto per sicurezza)
+  const allowedAdminHosts = [
+    'admin.booking.montecchiaperformancecenter.it',
+  ]
+  
+  // Se l'accesso è da un host admin autorizzato
+  if (allowedAdminHosts.includes(host)) {
     const pathname = request.nextUrl.pathname
     
     // Permetti l'accesso alla pagina di login e alle API di login/logout
