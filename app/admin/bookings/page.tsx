@@ -467,6 +467,17 @@ export default function AdminBookingsPage() {
                       const bookingDate = DateTime.fromISO(booking.date).setZone("Europe/Rome").startOf("day")
                       const isToday = bookingDate.hasSame(today, "day")
                       
+                      // Debug: verifica campi snapshot
+                      const displayName = [booking.customerFirstName || '', booking.customerLastName || ''].filter(Boolean).join(' ') || 'N/A'
+                      if (!booking.customerFirstName && !booking.customerLastName) {
+                        console.warn('Booking senza campi snapshot:', {
+                          id: booking.id,
+                          customerFirstName: booking.customerFirstName,
+                          customerLastName: booking.customerLastName,
+                          customer: booking.customer
+                        })
+                      }
+                      
                       return (
                       <TableRow key={booking.id} className={isToday ? "bg-teal-50 hover:bg-teal-100 border-l-4 border-teal-600" : ""}>
                         <TableCell className="font-medium">
@@ -477,7 +488,7 @@ export default function AdminBookingsPage() {
                           {booking.startTime} - {booking.endTime}
                         </TableCell>
                         <TableCell>
-                          {[booking.customerFirstName || '', booking.customerLastName || ''].filter(Boolean).join(' ') || 'N/A'}
+                          {displayName}
                         </TableCell>
                         <TableCell className="text-sm text-gray-600">
                           {booking.customer?.email}
