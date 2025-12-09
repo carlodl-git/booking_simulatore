@@ -417,9 +417,9 @@ function mapBookingFromDB(row: BookingRow): Booking {
     notes: row.notes ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    // Include snapshot fields se presenti
-    customerFirstName: row.customer_first_name ?? undefined,
-    customerLastName: row.customer_last_name ?? undefined,
+    // Include snapshot fields se presenti (usa null invece di undefined per la serializzazione JSON)
+    customerFirstName: row.customer_first_name ?? null,
+    customerLastName: row.customer_last_name ?? null,
   }
 }
 

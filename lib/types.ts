@@ -34,8 +34,9 @@ export interface Booking {
   createdAt: string
   updatedAt: string
   // Campi snapshot dalla prenotazione (nome/cognome al momento della prenotazione)
-  customerFirstName?: string
-  customerLastName?: string
+  // Usa string | null invece di string | undefined per garantire serializzazione JSON
+  customerFirstName: string | null
+  customerLastName: string | null
 }
 
 export interface BlackoutPeriod {
