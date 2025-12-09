@@ -220,14 +220,6 @@ export default function BookPage() {
   const selectedTime = watch("time")
   const selectedDuration = watch("duration")
   
-  // Log quando selectedDate cambia
-  useEffect(() => {
-    console.log('[BookPage] selectedDate cambiato:', selectedDate)
-    if (selectedDate) {
-      console.log('[BookPage] selectedDate ISO:', selectedDate.toISOString())
-      console.log('[BookPage] selectedDate string:', formatDateLocal(selectedDate))
-    }
-  }, [selectedDate])
 
   const canConfirm = Boolean(selectedDate && selectedTime && selectedDuration && !availabilityError)
 
@@ -295,37 +287,21 @@ export default function BookPage() {
       // Carica gli slot occupati dall'API
       // Usa la data locale invece di UTC per evitare problemi di timezone
       const dateString = formatDateLocal(selectedDate)
-      console.log('[BookPage] ⚠️ INIZIO FETCH per data:', dateString)
       setSlotsLoading(true)
       
-      console.log('[BookPage] Caricamento slot per data:', dateString)
-      
-      // Aggiungi cache-busting per evitare dati cached
-      const timestamp = Date.now()
-      const apiUrl = `/api/availability?date=${dateString}&durationMinutes=${durationMinutes}&resourceId=trackman-io&t=${timestamp}`
-      console.log('[BookPage] Chiamata API:', apiUrl)
-      console.log('[BookPage] Timestamp cache-busting:', timestamp)
+      // Lascia che la cache del server gestisca la validità dei dati
+      const apiUrl = `/api/availability?date=${dateString}&durationMinutes=${durationMinutes}&resourceId=trackman-io`
       
       fetch(apiUrl, {
-        cache: 'no-store',
         method: 'GET',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0',
-        }
       })
         .then(res => {
-          console.log('[BookPage] Risposta API status:', res.status, res.statusText)
           if (!res.ok) {
             throw new Error(`HTTP error! status: ${res.status}`)
           }
           return res.json()
         })
         .then(data => {
-          console.log('[BookPage] Dati ricevuti dall\'API:', data)
-          console.log('[BookPage] Slot occupati caricati:', data.allOccupiedSlots?.length || 0, 'per data:', dateString)
-          console.log('[BookPage] Slot occupati:', data.allOccupiedSlots)
           
           // Assicurati che allOccupiedSlots sia un array
           const slots = Array.isArray(data.allOccupiedSlots) ? data.allOccupiedSlots : []
@@ -339,7 +315,6 @@ export default function BookPage() {
             return slot
           })
           
-          console.log('[BookPage] Impostazione occupiedSlots con', normalizedSlots.length, 'slot normalizzati:', normalizedSlots)
           setOccupiedSlots(normalizedSlots)
         })
         .catch(err => {
@@ -347,7 +322,6 @@ export default function BookPage() {
           setOccupiedSlots([])
         })
         .finally(() => {
-          console.log('[BookPage] Caricamento completato')
           setSlotsLoading(false)
         })
     } else {
@@ -442,10 +416,6 @@ export default function BookPage() {
               <DatePicker
                 date={watch("date")}
                 onDateChange={(date) => {
-                  console.log('[BookPage] DatePicker onDateChange chiamato con:', date)
-                  if (date) {
-                    console.log('[BookPage] Impostazione data:', formatDateLocal(date))
-                  }
                   setValue("date", date as Date)
                 }}
                 placeholder="Seleziona una data"

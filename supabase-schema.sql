@@ -72,3 +72,63 @@ CREATE TRIGGER update_bookings_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
+-- Tabella blackouts per eventi/chiusure
+CREATE TABLE IF NOT EXISTS blackouts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  resource_id TEXT NOT NULL DEFAULT 'trackman-io',
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  start_time TIME, -- NULL = tutto il giorno
+  end_time TIME,   -- NULL = tutto il giorno
+  reason TEXT,     -- Motivo del blackout (es. "Evento speciale", "Manutenzione")
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  -- Validazione: end_date >= start_date
+  CONSTRAINT blackout_valid_date_range CHECK (end_date >= start_date),
+  
+  -- Validazione: se start_time è specificato, anche end_time deve esserlo
+  CONSTRAINT blackout_valid_time_range CHECK (
+    (start_time IS NULL AND end_time IS NULL) OR
+    (start_time IS NOT NULL AND end_time IS NOT NULL)
+  )
+);
+
+-- Indici per performance
+CREATE INDEX IF NOT EXISTS idx_blackouts_resource_date ON blackouts(resource_id, start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_blackouts_date_range ON blackouts USING gist (daterange(start_date, end_date, '[]'));
+
+-- Trigger per aggiornare updated_at
+CREATE TRIGGER update_blackouts_updated_at
+  BEFORE UPDATE ON blackouts
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- Tabella per tracciare i pagamenti dei maestri
+CREATE TABLE IF NOT EXISTS maestro_payments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  booking_id UUID NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+  maestro_name TEXT NOT NULL, -- Nome completo del maestro (preso dal customer della prenotazione)
+  maestro_email TEXT NOT NULL, -- Email del maestro (per raggruppare maestri con stessa email)
+  amount DECIMAL(10, 2) NOT NULL DEFAULT 10.00, -- Importo dovuto (10€ per lezione)
+  paid BOOLEAN NOT NULL DEFAULT FALSE,
+  paid_at TIMESTAMPTZ, -- Data/ora del pagamento
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  -- Un maestro può avere un solo pagamento per prenotazione
+  CONSTRAINT unique_booking_payment UNIQUE (booking_id)
+);
+
+-- Indici per performance
+CREATE INDEX IF NOT EXISTS idx_maestro_payments_maestro ON maestro_payments(maestro_name);
+CREATE INDEX IF NOT EXISTS idx_maestro_payments_email ON maestro_payments(maestro_email);
+CREATE INDEX IF NOT EXISTS idx_maestro_payments_booking ON maestro_payments(booking_id);
+CREATE INDEX IF NOT EXISTS idx_maestro_payments_paid ON maestro_payments(paid);
+
+-- Trigger per aggiornare updated_at
+CREATE TRIGGER update_maestro_payments_updated_at
+  BEFORE UPDATE ON maestro_payments
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+

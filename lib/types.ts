@@ -99,3 +99,25 @@ export type BookingWithCustomer = Booking & {
   customer: Customer
 }
 
+export interface MaestroPayment {
+  id: string
+  bookingId: string
+  maestroName: string
+  maestroEmail: string
+  amount: number
+  paid: boolean
+  paidAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MaestroSummary {
+  maestroEmail: string
+  maestroNames: string[] // Array di nomi per lo stesso maestro (stessa email)
+  totalOwed: number
+  totalPaid: number
+  pendingAmount: number
+  lessonsCount: number
+  paidLessonsCount: number
+}
+

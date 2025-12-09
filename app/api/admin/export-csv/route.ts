@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server"
 import { getAllBookings } from "@/lib/repo"
 
-// Force dynamic rendering - don't cache this route
+// Export CSV - sempre dinamico ma non necessita force-dynamic
 export const dynamic = 'force-dynamic'
-export const revalidate = 0
 
 export async function GET() {
   try {
-    const bookings = await getAllBookings(10000)
+    // Per export CSV possiamo caricare più dati, ma con un limite ragionevole
+    // Considerare streaming per dataset molto grandi in futuro
+    const bookings = await getAllBookings(50000)
 
     // Headers CSV
     const headers = [

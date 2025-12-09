@@ -171,13 +171,16 @@ export function isSlotInBlackout(
 }
 
 // Calcola tutti gli slot occupati per una data (indipendentemente dalla durata richiesta)
+// Include sia bookings che blackout
 export function calculateAllOccupiedSlots(
   date: string,
   bookings: Booking[],
-  resourceId: string = "trackman-io"
+  resourceId: string = "trackman-io",
+  blackouts: BlackoutPeriod[] = []
 ): string[] {
   const occupiedSlots: string[] = []
   
+  // Aggiungi slot occupati dai bookings
   bookings.forEach((booking) => {
     if (!isBookingActive(booking, date) || booking.resourceId !== resourceId) {
       return
@@ -186,6 +189,46 @@ export function calculateAllOccupiedSlots(
     // Genera tutti gli slot da startTime a endTime
     const slots = generateTimeSlotsBetween(booking.startTime, booking.endTime)
     occupiedSlots.push(...slots)
+  })
+  
+  // Aggiungi slot occupati dai blackout
+  const slotDate = DateTime.fromISO(date, { zone: TIMEZONE })
+  const slotDateISO = slotDate.toISODate() // YYYY-MM-DD
+  
+  console.log('[calculateAllOccupiedSlots] Verifica blackout per data:', slotDateISO, 'blackouts:', blackouts.length)
+  
+  blackouts.forEach((blackout) => {
+    if (blackout.resourceId !== resourceId) {
+      console.log('[calculateAllOccupiedSlots] Blackout saltato - resourceId diverso:', blackout.resourceId, 'vs', resourceId)
+      return
+    }
+    
+    // Verifica se la data è nel range del blackout (confronto solo le date)
+    if (slotDateISO < blackout.startDate || slotDateISO > blackout.endDate) {
+      console.log('[calculateAllOccupiedSlots] Blackout saltato - data fuori range:', slotDateISO, 'vs', blackout.startDate, '-', blackout.endDate)
+      return
+    }
+    
+    console.log('[calculateAllOccupiedSlots] Blackout applicato:', {
+      startDate: blackout.startDate,
+      endDate: blackout.endDate,
+      startTime: blackout.startTime,
+      endTime: blackout.endTime,
+      reason: blackout.reason,
+    })
+    
+    // Se il blackout ha orari specifici, genera solo quegli slot
+    if (blackout.startTime && blackout.endTime) {
+      const slots = generateTimeSlotsBetween(blackout.startTime, blackout.endTime)
+      console.log('[calculateAllOccupiedSlots] Slot blackout generati (con orari):', slots.length, slots)
+      occupiedSlots.push(...slots)
+    } else {
+      // Se non ha orari specifici, tutto il giorno è in blackout
+      // Genera tutti gli slot del giorno
+      const allDaySlots = generateTimeSlots()
+      console.log('[calculateAllOccupiedSlots] Slot blackout generati (tutto il giorno):', allDaySlots.length)
+      occupiedSlots.push(...allDaySlots)
+    }
   })
   
   // Rimuovi duplicati

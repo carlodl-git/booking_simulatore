@@ -56,3 +56,84 @@
 4. **MEDIA**: Ridurre logging in produzione
 5. **MEDIA**: Abilitare cache appropriata
 
+---
+
+## 🔴 Problemi Aggiuntivi Identificati
+
+### 7. **Cache-busting eccessivo nel frontend**
+**Problema**: Tutti i fetch nel frontend usano `Date.now()` come query param e `cache: 'no-store'`, bypassando completamente la cache del server che abbiamo aggiunto.
+
+**Impatto**: Alto - la cache del server viene completamente ignorata, ogni richiesta va al server.
+
+**File interessati**:
+- `app/book/page.tsx` - riga 304-305
+- `app/admin/bookings/page.tsx` - riga 90
+- `app/admin/bookings/history/page.tsx` - riga 78
+- `app/admin/maestri/page.tsx` - righe 67, 103
+
+**Soluzione**: Rimuovere cache-busting e `cache: 'no-store'` dal frontend, lasciare che la cache del server funzioni.
+
+### 8. **Export CSV con limite troppo alto**
+**Problema**: `app/api/admin/export-csv/route.ts` chiama `getAllBookings(10000)` che può essere molto pesante.
+
+**Impatto**: Alto - può causare timeout o memory issues con molti dati.
+
+**Soluzione**: 
+- Rimuovere il limite o aumentarlo solo se necessario
+- Considerare streaming per CSV grandi
+- Aggiungere timeout appropriato
+
+### 9. **Filtering lato client invece che lato server**
+**Problema**: In `app/admin/bookings/page.tsx`, i filtri vengono applicati lato client su tutti i bookings caricati (fino a 1000), invece che lato server.
+
+**Impatto**: Medio - trasferisce più dati del necessario e fa filtering pesante lato client.
+
+**Soluzione**: Implementare filtri lato server nell'API, caricare solo i dati filtrati.
+
+### 10. **Logging eccessivo nel frontend**
+**Problema**: Molti `console.log` nel frontend (specialmente in `app/book/page.tsx` e `app/admin/bookings/page.tsx`) che possono rallentare l'app.
+
+**Impatto**: Medio - può rallentare l'esecuzione JavaScript nel browser.
+
+**Soluzione**: Rimuovere o condizionare i log solo in sviluppo.
+
+### 11. **Mancanza di debouncing per chiamate API**
+**Problema**: Le chiamate API vengono fatte immediatamente quando l'utente cambia input (es. data nel form di prenotazione).
+
+**Impatto**: Basso-Medio - può causare richieste multiple se l'utente cambia rapidamente i valori.
+
+**Soluzione**: Implementare debouncing per chiamate API non critiche (es. ricerca, filtri).
+
+### 12. **applyFilters eseguito troppo spesso**
+**Problema**: `applyFilters` in `app/admin/bookings/page.tsx` viene eseguito ad ogni cambio di dipendenza e fa filtering/sorting su array potenzialmente grandi (1000+ elementi).
+
+**Impatto**: Medio - può causare lag nell'UI durante il filtering.
+
+**Soluzione**: 
+- Usare `useMemo` per memoizzare i risultati filtrati
+- Ottimizzare gli algoritmi di filtering
+- Considerare virtualizzazione per liste grandi
+
+### 13. **Query con JOIN pesanti**
+**Problema**: `getAllBookings()` fa JOIN con la tabella `customers` per ogni booking, caricando molti dati.
+
+**Impatto**: Medio - aumenta la dimensione della risposta e il tempo di query.
+
+**Soluzione**: 
+- Considerare query separate se non servono sempre i dati customer
+- Usare select specifici invece di `*`
+- Implementare lazy loading per dati customer
+
+## 📊 Priorità Aggiornata
+
+1. ✅ **COMPLETATO**: Fix query N+1 in `syncMaestroPayments()`
+2. ✅ **COMPLETATO**: Rimuovere `force-dynamic` dalle route non critiche
+3. ✅ **COMPLETATO**: Ridurre limite `getAllBookings()` da 5000 a 1000
+4. ✅ **COMPLETATO**: Ridurre logging in produzione
+5. 🔴 **URGENTE**: Rimuovere cache-busting dal frontend (bypassa cache server)
+6. 🟡 **ALTA**: Ottimizzare export CSV (limite 10000 troppo alto)
+7. 🟡 **ALTA**: Implementare filtri lato server invece che lato client
+8. 🟢 **MEDIA**: Rimuovere logging eccessivo dal frontend
+9. 🟢 **MEDIA**: Aggiungere debouncing per chiamate API
+10. 🟢 **MEDIA**: Ottimizzare `applyFilters` con `useMemo`
+

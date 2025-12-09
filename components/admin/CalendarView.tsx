@@ -36,8 +36,19 @@ interface Booking {
   customer: Customer
 }
 
+interface Blackout {
+  id: string
+  resourceId: string
+  startDate: string
+  endDate: string
+  startTime?: string
+  endTime?: string
+  reason?: string
+}
+
 interface CalendarViewProps {
   bookings: Booking[]
+  blackouts?: Blackout[]
   onBookingClick: (booking: Booking) => void
 }
 
@@ -67,7 +78,7 @@ const generateTimeSlots = () => {
 
 const TIME_SLOTS = generateTimeSlots()
 
-export function CalendarView({ bookings, onBookingClick }: CalendarViewProps) {
+export function CalendarView({ bookings, blackouts = [], onBookingClick }: CalendarViewProps) {
   const [viewDate, setViewDate] = useState<Date>(new Date())
   const [viewMode, setViewMode] = useState<"day" | "week">("day")
 
@@ -115,6 +126,26 @@ export function CalendarView({ bookings, onBookingClick }: CalendarViewProps) {
     acc[booking.date].push(booking)
     return acc
   }, {} as Record<string, Booking[]>)
+
+  // Filtra e raggruppa i blackout per data
+  const blackoutsByDate: Record<string, Blackout[]> = {}
+  blackouts.forEach(blackout => {
+    const startDate = DateTime.fromISO(blackout.startDate)
+    const endDate = DateTime.fromISO(blackout.endDate)
+    
+    daysToShow.forEach(day => {
+      const dayDate = DateTime.fromJSDate(day)
+      const dayDateStr = dayDate.toFormat("yyyy-MM-dd")
+      
+      // Verifica se il blackout copre questo giorno
+      if (dayDate >= startDate.startOf('day') && dayDate <= endDate.endOf('day')) {
+        if (!blackoutsByDate[dayDateStr]) {
+          blackoutsByDate[dayDateStr] = []
+        }
+        blackoutsByDate[dayDateStr].push(blackout)
+      }
+    })
+  })
   
   // Funzioni di navigazione
   const goToPrevious = () => {
@@ -146,6 +177,30 @@ export function CalendarView({ bookings, onBookingClick }: CalendarViewProps) {
     const duration = endTotalMinutes - startTotalMinutes
     const slotHeight = 40 // Altezza di ogni slot di 30 minuti in px (ridotta per meno scroll)
     return (duration / 30) * slotHeight
+  }
+
+  // Calcola l'altezza di un blackout
+  const getBlackoutHeight = (blackout: Blackout): number => {
+    if (blackout.startTime && blackout.endTime) {
+      const [startHours, startMinutes] = blackout.startTime.split(":").map(Number)
+      const [endHours, endMinutes] = blackout.endTime.split(":").map(Number)
+      const startTotalMinutes = startHours * 60 + startMinutes
+      const endTotalMinutes = endHours * 60 + endMinutes
+      const duration = endTotalMinutes - startTotalMinutes
+      const slotHeight = 40
+      return (duration / 30) * slotHeight
+    }
+    // Se non ha orari, copre tutto il giorno
+    return TIME_SLOTS.length * 40
+  }
+
+  // Trova lo slot di inizio per un blackout
+  const getBlackoutStartSlot = (blackout: Blackout): string | null => {
+    if (blackout.startTime) {
+      return blackout.startTime
+    }
+    // Se non ha orario, inizia dal primo slot
+    return TIME_SLOTS[0]
   }
 
   return (
@@ -238,6 +293,40 @@ export function CalendarView({ bookings, onBookingClick }: CalendarViewProps) {
                         key={`${timeSlot}-${dayIdx}`}
                         className="border-b relative h-[40px]"
                       >
+                        {/* Render blackouts that start in this exact time slot */}
+                        {blackoutsByDate[dayDateStr]?.map(blackout => {
+                          const startSlot = getBlackoutStartSlot(blackout)
+                          // Only render if this blackout starts at this exact time slot
+                          if (startSlot === timeSlot) {
+                            const height = getBlackoutHeight(blackout)
+                            return (
+                              <div
+                                key={`blackout-${blackout.id}`}
+                                className="absolute left-0 right-0 z-10"
+                                style={{
+                                  top: "0px",
+                                  height: `${height}px`,
+                                }}
+                              >
+                                <div className="h-full rounded px-2 py-1 text-xs overflow-hidden bg-red-100 border-l-4 border-red-500 opacity-80">
+                                  <div className="font-semibold truncate text-red-800">
+                                    🚫 {blackout.reason || "Blackout"}
+                                  </div>
+                                  <div className="text-red-600 text-[10px]">
+                                    {blackout.startTime && blackout.endTime
+                                      ? `${blackout.startTime} - ${blackout.endTime}`
+                                      : "Tutto il giorno"}
+                                  </div>
+                                  <div className="text-red-600 text-[10px]">
+                                    Non prenotabile
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          }
+                          return null
+                        })}
+
                         {/* Render bookings that start in this exact time slot */}
                         {bookingsByDate[dayDateStr]?.map(booking => {
                           // Only render if this booking starts at this exact time slot

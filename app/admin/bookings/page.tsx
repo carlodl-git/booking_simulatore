@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DateTime } from "luxon"
-import { Calendar, X, Download, Search, Filter, List, Grid, RefreshCw, LogOut } from "lucide-react"
+import { Calendar, X, Download, Search, Filter, List, Grid, RefreshCw, LogOut, Ban, Euro } from "lucide-react"
 import { DatePicker } from "@/components/ui/date-picker"
 import { CalendarView } from "@/components/admin/CalendarView"
 import Link from "next/link"
@@ -57,13 +57,24 @@ const formatActivityType = (type: string) => {
   }
 }
 
+interface Blackout {
+  id: string
+  resourceId: string
+  startDate: string
+  endDate: string
+  startTime?: string
+  endTime?: string
+  reason?: string
+}
+
 export default function AdminBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([])
-  const [filteredBookings, setFilteredBookings] = useState<Booking[]>([])
+  const [blackouts, setBlackouts] = useState<Blackout[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [viewMode, setViewMode] = useState<"table" | "calendar">("table")
+  const [totalMaestroOwed, setTotalMaestroOwed] = useState<number | null>(null) // null = loading
   
   // Filters
   const [searchQuery, setSearchQuery] = useState("")
@@ -74,14 +85,9 @@ export default function AdminBookingsPage() {
   const fetchBookings = useCallback(async () => {
     try {
       setLoading(true)
-      // Add cache-busting to prevent stale data
-      const response = await fetch(`/api/admin/bookings?t=${Date.now()}`, {
-        cache: 'no-store',
+      // Lascia che la cache del server gestisca la validità dei dati
+      const response = await fetch(`/api/admin/bookings`, {
         credentials: 'include', // Include cookies in the request
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-        }
       })
       
       if (!response.ok) {
@@ -90,7 +96,6 @@ export default function AdminBookingsPage() {
       
       const data = await response.json()
       const fetchedBookings = data.bookings || []
-      console.log('Fetched bookings:', fetchedBookings.length, fetchedBookings)
       setBookings(fetchedBookings)
     } catch (error) {
       console.error("Error fetching bookings:", error)
@@ -99,19 +104,17 @@ export default function AdminBookingsPage() {
     }
   }, [])
 
-  const applyFilters = useCallback(() => {
+  // Ottimizza il filtering con useMemo invece di useCallback
+  const filteredBookings = useMemo(() => {
     // Filter out past bookings first
     const today = DateTime.now().setZone("Europe/Rome").startOf("day")
-    console.log('Today (Europe/Rome):', today.toISO())
     let filtered = bookings.filter(booking => {
       const bookingDate = DateTime.fromISO(booking.date).setZone("Europe/Rome").startOf("day")
       const isFuture = bookingDate >= today
-      if (!isFuture) {
-        console.log('Filtered out past booking:', booking.date, bookingDate.toISO(), 'vs', today.toISO())
-      }
-      return isFuture
+      // Escludi anche le prenotazioni cancellate
+      const isNotCancelled = booking.status !== "cancelled"
+      return isFuture && isNotCancelled
     })
-    console.log('Total bookings:', bookings.length, 'After date filter:', filtered.length)
 
     // Search filter
     if (searchQuery) {
@@ -140,22 +143,47 @@ export default function AdminBookingsPage() {
     }
 
     // Sort by date/time ascending (upcoming first)
-    filtered.sort((a, b) => {
+    return [...filtered].sort((a, b) => {
       const dateA = DateTime.fromISO(a.startsAt).setZone("Europe/Rome")
       const dateB = DateTime.fromISO(b.startsAt).setZone("Europe/Rome")
       return dateA.toMillis() - dateB.toMillis()
     })
-
-    setFilteredBookings(filtered)
   }, [bookings, dateFilter, searchQuery, statusFilter, userTypeFilter])
+
+  const loadBlackouts = useCallback(async () => {
+    try {
+      const response = await fetch("/api/admin/blackouts")
+      if (!response.ok) throw new Error("Errore nel caricamento blackouts")
+      const data = await response.json()
+      setBlackouts(data.blackouts || [])
+    } catch (error) {
+      console.error("Errore nel caricamento blackouts:", error)
+      // Non bloccare se i blackout non si caricano
+    }
+  }, [])
+
+  const fetchTotalMaestroOwed = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/admin/maestri`, {
+        credentials: 'include',
+      })
+      
+      if (!response.ok) {
+        throw new Error("Error fetching maestro totals")
+      }
+      
+      const data = await response.json()
+      setTotalMaestroOwed(data.totalOwed || 0)
+    } catch (error) {
+      console.error("Error fetching maestro totals:", error)
+    }
+  }, [])
 
   useEffect(() => {
     fetchBookings()
-  }, [fetchBookings])
-
-  useEffect(() => {
-    applyFilters()
-  }, [applyFilters])
+    loadBlackouts()
+    fetchTotalMaestroOwed()
+  }, [fetchBookings, loadBlackouts, fetchTotalMaestroOwed])
 
   const handleCancelBooking = async () => {
     if (!selectedBooking) return
@@ -256,6 +284,33 @@ export default function AdminBookingsPage() {
               </div>
             </div>
           </CardHeader>
+        </Card>
+
+        {/* Maestro Payments Summary */}
+        <Card className="mb-6 border-orange-200 bg-orange-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Euro className="h-6 w-6 text-orange-600" />
+                <div>
+                  <CardTitle className="text-lg">Totale dovuto dai Maestri</CardTitle>
+                  <CardDescription>Lezioni passate non ancora saldate</CardDescription>
+                </div>
+              </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <div className="text-3xl font-bold text-orange-600">
+                      {totalMaestroOwed === null ? "-" : `€${totalMaestroOwed.toFixed(2)}`}
+                    </div>
+                  </div>
+                  <Link href="/admin/maestri">
+                    <Button variant="default" className="bg-orange-600 hover:bg-orange-700">
+                      Gestisci Pagamenti
+                    </Button>
+                  </Link>
+                </div>
+            </div>
+          </CardContent>
         </Card>
 
         {/* Filters */}
@@ -467,6 +522,7 @@ export default function AdminBookingsPage() {
         {viewMode === "calendar" && (
           <CalendarView
             bookings={bookings}
+            blackouts={blackouts}
             onBookingClick={handleBookingClick}
           />
         )}
@@ -577,11 +633,17 @@ export default function AdminBookingsPage() {
 
       {/* Historical Bookings Link */}
       <Card className="mt-6">
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 space-y-2">
           <Link href="/admin/bookings/history">
             <Button variant="outline" className="w-full">
               <Calendar className="mr-2 h-4 w-4" />
               Storico Prenotazioni
+            </Button>
+          </Link>
+          <Link href="/admin/blackouts">
+            <Button variant="outline" className="w-full">
+              <Ban className="mr-2 h-4 w-4" />
+              Gestione Blackout
             </Button>
           </Link>
         </CardContent>

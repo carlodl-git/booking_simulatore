@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DateTime } from "luxon"
-import { Download, Search, Filter, X, ArrowLeft, RefreshCw, LogOut } from "lucide-react"
+import { Download, Search, Filter, X, ArrowLeft, RefreshCw, LogOut, Euro } from "lucide-react"
 import { DatePicker } from "@/components/ui/date-picker"
 import Link from "next/link"
 
@@ -58,10 +58,11 @@ const formatActivityType = (type: string) => {
 
 export default function HistoricalBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([])
-  const [filteredBookings, setFilteredBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [showCancelled, setShowCancelled] = useState(false) // Toggle per mostrare cancellate
+  const [totalRevenue, setTotalRevenue] = useState<number | null>(null) // null = loading
   
   // Filters
   const [searchQuery, setSearchQuery] = useState("")
@@ -72,14 +73,9 @@ export default function HistoricalBookingsPage() {
   const fetchBookings = useCallback(async () => {
     try {
       setLoading(true)
-      // Add cache-busting to prevent stale data
-      const response = await fetch(`/api/admin/bookings?t=${Date.now()}`, {
-        cache: 'no-store',
+      // Lascia che la cache del server gestisca la validità dei dati
+      const response = await fetch(`/api/admin/bookings?includeRevenue=true`, {
         credentials: 'include', // Include cookies in the request
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-        }
       })
       
       if (!response.ok) {
@@ -88,6 +84,7 @@ export default function HistoricalBookingsPage() {
       
       const data = await response.json()
       setBookings(data.bookings || [])
+      setTotalRevenue(data.totalRevenue ?? null)
     } catch (error) {
       console.error("Error fetching bookings:", error)
     } finally {
@@ -95,13 +92,19 @@ export default function HistoricalBookingsPage() {
     }
   }, [])
 
-  const applyFilters = useCallback(() => {
+  // Ottimizza il filtering con useMemo invece di useCallback
+  const filteredBookings = useMemo(() => {
     // Filter for past bookings only
     const today = DateTime.now().setZone("Europe/Rome").startOf("day")
     let filtered = bookings.filter(booking => {
       const bookingDate = DateTime.fromISO(booking.date).setZone("Europe/Rome").startOf("day")
       return bookingDate < today
     })
+
+    // Per default escludi le cancellate (a meno che showCancelled sia true)
+    if (!showCancelled) {
+      filtered = filtered.filter(booking => booking.status !== "cancelled")
+    }
 
     // Search filter
     if (searchQuery) {
@@ -113,7 +116,7 @@ export default function HistoricalBookingsPage() {
       )
     }
 
-    // Status filter
+    // Status filter (solo se showCancelled è true, altrimenti ignoriamo questo filtro per le cancellate)
     if (statusFilter !== "all") {
       filtered = filtered.filter(booking => booking.status === statusFilter)
     }
@@ -130,22 +133,16 @@ export default function HistoricalBookingsPage() {
     }
 
     // Sort by date/time descending (most recent first)
-    filtered.sort((a, b) => {
+    return [...filtered].sort((a, b) => {
       const dateA = DateTime.fromISO(a.startsAt).setZone("Europe/Rome")
       const dateB = DateTime.fromISO(b.startsAt).setZone("Europe/Rome")
       return dateB.toMillis() - dateA.toMillis()
     })
-
-    setFilteredBookings(filtered)
-  }, [bookings, dateFilter, searchQuery, statusFilter, userTypeFilter])
+  }, [bookings, dateFilter, searchQuery, statusFilter, userTypeFilter, showCancelled])
 
   useEffect(() => {
     fetchBookings()
   }, [fetchBookings])
-
-  useEffect(() => {
-    applyFilters()
-  }, [applyFilters])
 
   const handleExportCSV = async () => {
     try {
@@ -315,13 +312,48 @@ export default function HistoricalBookingsPage() {
           </CardContent>
         </Card>
 
+        {/* Total Revenue Summary */}
+        <Card className="mb-6 border-blue-200 bg-blue-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Euro className="h-6 w-6 text-blue-600" />
+                <div>
+                  <CardTitle className="text-lg">Totale Incassato Storico</CardTitle>
+                  <CardDescription>
+                    Calcolato su tutte le prenotazioni passate non cancellate
+                    <br />
+                    <span className="text-xs">
+                      • 20€/ora per tutte le attività (9 buche, 18 buche, pratica, mini-giochi)
+                      <br />
+                      • 10€/ora per lezioni maestro
+                    </span>
+                  </CardDescription>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-4xl font-bold text-blue-600">
+                  {totalRevenue === null ? "-" : `€${totalRevenue.toFixed(2)}`}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Bookings Table */}
         <Card>
           <CardContent className="pt-6">
-            <div className="mb-4">
+            <div className="mb-4 flex items-center justify-between">
               <CardTitle>
                 Prenotazioni passate ({filteredBookings.length})
               </CardTitle>
+              <Button
+                variant={showCancelled ? "default" : "outline"}
+                onClick={() => setShowCancelled(!showCancelled)}
+                size="sm"
+              >
+                {showCancelled ? "Nascondi cancellate" : "Mostra cancellate"}
+              </Button>
             </div>
             {filteredBookings.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
