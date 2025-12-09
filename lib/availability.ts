@@ -201,7 +201,7 @@ export function calculateAllOccupiedSlots(
     }
     
     // Verifica se la data è nel range del blackout (confronto solo le date)
-    if (slotDateISO < blackout.startDate || slotDateISO > blackout.endDate) {
+    if (!slotDateISO || slotDateISO < blackout.startDate || slotDateISO > blackout.endDate) {
       return
     }
     

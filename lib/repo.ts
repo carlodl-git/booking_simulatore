@@ -337,10 +337,16 @@ export async function getAllBookings(limit: number = 1000): Promise<BookingWithC
     throw dbError
   }
 
-  const rows = (data ?? []) as BookingWithCustomerRow[]
+  // Supabase restituisce customer come array quando fa JOIN, ma dovrebbe essere un singolo oggetto
+  const rows = (data ?? []) as unknown as BookingWithCustomerRow[]
   return rows.map(row => {
+    // Gestisci il caso in cui customer sia un array (non dovrebbe succedere, ma TypeScript lo richiede)
+    const customerData = Array.isArray(row.customer) ? row.customer[0] : row.customer
+    if (!customerData) {
+      throw new Error('Customer data missing from booking')
+    }
     const booking = mapBookingFromDB(row)
-    const customer = mapCustomerFromDB(row.customer)
+    const customer = mapCustomerFromDB(customerData)
     applySnapshotToCustomer(row, customer)
     return {
       ...booking,
@@ -639,7 +645,7 @@ export async function syncMaestroPayments(): Promise<void> {
   }
 
   // Recupera tutti i customers in una singola query per evitare N+1
-  const customerIds = [...new Set(bookings.map(b => b.customer_id).filter(Boolean))]
+  const customerIds = Array.from(new Set(bookings.map(b => b.customer_id).filter(Boolean)))
   const { data: customers, error: customersError } = await supabaseAdmin
     .from('customers')
     .select('id, email')
@@ -1036,5 +1042,5 @@ export async function getTotalRevenueFromPastBookings(): Promise<number> {
     throw new Error(`Errore database: ${error.message}`)
   }
 
-  return data?.total_revenue || 0
+  return (data as { total_revenue?: number })?.total_revenue || 0
 }

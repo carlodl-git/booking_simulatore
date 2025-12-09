@@ -3,6 +3,11 @@
  * Chiamare all'avvio dell'applicazione
  */
 export function validateEnv(): void {
+  // Non validare durante il build (Next.js non ha accesso alle variabili d'ambiente)
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    return
+  }
+  
   const required = [
     'SUPABASE_URL',
     'SUPABASE_SERVICE_ROLE_KEY',
@@ -18,7 +23,7 @@ export function validateEnv(): void {
     
     console.error(error)
     
-    // In produzione, lancia errore per bloccare l'avvio
+    // In produzione runtime, lancia errore per bloccare l'avvio
     if (process.env.NODE_ENV === 'production') {
       throw new Error(error)
     }

@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
+import { ensureEnvValidated } from "@/lib/supabase"
 
 // Login route - sempre dinamica
 export const revalidate = 0
 
 export async function POST(request: Request) {
+  // Valida variabili d'ambiente in produzione
+  ensureEnvValidated()
   try {
     const { username, password } = await request.json()
 
