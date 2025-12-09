@@ -137,3 +137,74 @@
 9. 🟢 **MEDIA**: Aggiungere debouncing per chiamate API
 10. 🟢 **MEDIA**: Ottimizzare `applyFilters` con `useMemo`
 
+---
+
+## 🔴 Problemi Aggiuntivi Identificati (Seconda Analisi)
+
+### 14. **Calcolo revenue in memoria invece che nel database**
+**Problema**: `getTotalRevenueFromPastBookings()` in `lib/repo.ts` carica tutte le prenotazioni passate e fa il calcolo in JavaScript invece che con SQL aggregation.
+
+**Impatto**: Alto - carica migliaia di record solo per sommare valori, trasferisce dati inutili.
+
+**Soluzione**: Usare SQL aggregation (`SUM`, `CASE`) per calcolare il revenue direttamente nel database.
+
+### 15. **Logging eccessivo in `lib/availability.ts`**
+**Problema**: La funzione `calculateAllOccupiedSlots` ha molti `console.log` che vengono eseguiti ad ogni chiamata (righe 198-230).
+
+**Impatto**: Medio - può rallentare il calcolo degli slot disponibili.
+
+**Soluzione**: Rimuovere o condizionare i log solo in sviluppo.
+
+### 16. **DateTime.now() chiamato ripetutamente**
+**Problema**: In `applyFilters` (sia in bookings che history) viene chiamato `DateTime.now()` ad ogni render/calcolo.
+
+**Impatto**: Basso-Medio - overhead minimo ma può essere ottimizzato.
+
+**Soluzione**: Memoizzare `today` o calcolarlo una volta sola.
+
+### 17. **Query senza limiti per revenue**
+**Problema**: `getTotalRevenueFromPastBookings()` carica tutte le prenotazioni passate senza limite.
+
+**Impatto**: Medio - può caricare migliaia di record inutili.
+
+**Soluzione**: Usare SQL aggregation invece di caricare tutti i dati.
+
+### 18. **Middleware eseguito su tutte le richieste**
+**Problema**: Il middleware viene eseguito su tutte le richieste (tranne quelle esplicitamente escluse), anche su file statici.
+
+**Impatto**: Basso-Medio - overhead minimo ma può essere ottimizzato.
+
+**Soluzione**: Escludere più route statiche o ottimizzare la logica del middleware.
+
+### 19. **Immagini non ottimizzate**
+**Problema**: Ci sono immagini JPG e PNG in `/public` che potrebbero essere convertite in WebP o ottimizzate.
+
+**Impatto**: Basso-Medio - aumenta il tempo di caricamento delle pagine.
+
+**Soluzione**: Convertire immagini in WebP e usare Next.js Image optimization.
+
+### 20. **Mancanza di indici compositi per query comuni**
+**Problema**: Potrebbero mancare indici compositi per query frequenti come:
+- `(status, starts_at)` per filtri comuni
+- `(resource_id, status, starts_at)` per query di disponibilità
+
+**Impatto**: Medio - query potrebbero essere più lente con molti dati.
+
+**Soluzione**: Analizzare query plan e aggiungere indici compositi se necessario.
+
+## 📊 Priorità Aggiornata (Seconda Analisi)
+
+1. ✅ **COMPLETATO**: Fix query N+1 in `syncMaestroPayments()`
+2. ✅ **COMPLETATO**: Rimuovere `force-dynamic` dalle route non critiche
+3. ✅ **COMPLETATO**: Ridurre limite `getAllBookings()` da 5000 a 1000
+4. ✅ **COMPLETATO**: Ridurre logging in produzione
+5. ✅ **COMPLETATO**: Rimuovere cache-busting dal frontend
+6. ✅ **COMPLETATO**: Ottimizzare export CSV
+7. ✅ **COMPLETATO**: Ottimizzare `applyFilters` con `useMemo`
+8. 🔴 **URGENTE**: Calcolare revenue nel database invece che in memoria
+9. 🟡 **ALTA**: Rimuovere logging eccessivo da `lib/availability.ts`
+10. 🟡 **ALTA**: Memoizzare `DateTime.now()` in `applyFilters`
+11. 🟢 **MEDIA**: Ottimizzare middleware per escludere più route
+12. 🟢 **MEDIA**: Convertire immagini in WebP
+13. 🟢 **MEDIA**: Aggiungere indici compositi se necessario
+

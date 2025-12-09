@@ -964,34 +964,50 @@ export async function getTotalMaestroPaid(
  * Calcola il totale incassato da tutte le prenotazioni passate non cancellate
  * - 20€ l'ora per tutte le attività tranne "lezione-maestro"
  * - 10€ l'ora per "lezione-maestro"
+ * 
+ * Ottimizzato: usa SQL aggregation invece di caricare tutti i dati in memoria
  */
 export async function getTotalRevenueFromPastBookings(): Promise<number> {
   const today = DateTime.now().setZone("Europe/Rome").startOf("day").toUTC()
 
-  // Recupera tutte le prenotazioni passate e non cancellate
-  const { data: bookings, error } = await supabaseAdmin
-    .from('bookings')
-    .select('duration_minutes, activity_type')
-    .eq('status', 'confirmed')
-    .lt('starts_at', today.toISO()!)
+  // Usa SQL aggregation per calcolare il revenue direttamente nel database
+  // Questo è molto più efficiente che caricare tutti i dati e calcolare in JavaScript
+  const { data, error } = await supabaseAdmin.rpc('calculate_total_revenue', {
+    before_date: today.toISO()!
+  }).single()
+
+  // Se la funzione RPC non esiste, fallback al metodo precedente
+  if (error && error.code === '42883') {
+    // Funzione RPC non esiste, usa il metodo precedente come fallback
+    const { data: bookings, error: bookingsError } = await supabaseAdmin
+      .from('bookings')
+      .select('duration_minutes, activity_type')
+      .eq('status', 'confirmed')
+      .lt('starts_at', today.toISO()!)
+
+    if (bookingsError) {
+      console.error('Errore nel calcolo totale incassato:', bookingsError)
+      throw new Error(`Errore database: ${bookingsError.message}`)
+    }
+
+    if (!bookings || bookings.length === 0) {
+      return 0
+    }
+
+    let total = 0
+    for (const booking of bookings) {
+      const hours = booking.duration_minutes / 60
+      const isMaestroLesson = booking.activity_type === 'lezione-maestro'
+      const pricePerHour = isMaestroLesson ? 10 : 20
+      total += hours * pricePerHour
+    }
+    return total
+  }
 
   if (error) {
     console.error('Errore nel calcolo totale incassato:', error)
     throw new Error(`Errore database: ${error.message}`)
   }
 
-  if (!bookings || bookings.length === 0) {
-    return 0
-  }
-
-  let total = 0
-
-  for (const booking of bookings) {
-    const hours = booking.duration_minutes / 60
-    const isMaestroLesson = booking.activity_type === 'lezione-maestro'
-    const pricePerHour = isMaestroLesson ? 10 : 20
-    total += hours * pricePerHour
-  }
-
-  return total
+  return data?.total_revenue || 0
 }

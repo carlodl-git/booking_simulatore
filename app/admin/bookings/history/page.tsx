@@ -92,10 +92,12 @@ export default function HistoricalBookingsPage() {
     }
   }, [])
 
+  // Memoizza "today" per evitare di calcolarlo ad ogni render
+  const today = useMemo(() => DateTime.now().setZone("Europe/Rome").startOf("day"), [])
+
   // Ottimizza il filtering con useMemo invece di useCallback
   const filteredBookings = useMemo(() => {
     // Filter for past bookings only
-    const today = DateTime.now().setZone("Europe/Rome").startOf("day")
     let filtered = bookings.filter(booking => {
       const bookingDate = DateTime.fromISO(booking.date).setZone("Europe/Rome").startOf("day")
       return bookingDate < today
@@ -138,7 +140,7 @@ export default function HistoricalBookingsPage() {
       const dateB = DateTime.fromISO(b.startsAt).setZone("Europe/Rome")
       return dateB.toMillis() - dateA.toMillis()
     })
-  }, [bookings, dateFilter, searchQuery, statusFilter, userTypeFilter, showCancelled])
+  }, [bookings, dateFilter, searchQuery, statusFilter, userTypeFilter, showCancelled, today])
 
   useEffect(() => {
     fetchBookings()

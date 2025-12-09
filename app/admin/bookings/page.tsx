@@ -104,10 +104,12 @@ export default function AdminBookingsPage() {
     }
   }, [])
 
+  // Memoizza "today" per evitare di calcolarlo ad ogni render
+  const today = useMemo(() => DateTime.now().setZone("Europe/Rome").startOf("day"), [])
+
   // Ottimizza il filtering con useMemo invece di useCallback
   const filteredBookings = useMemo(() => {
     // Filter out past bookings first
-    const today = DateTime.now().setZone("Europe/Rome").startOf("day")
     let filtered = bookings.filter(booking => {
       const bookingDate = DateTime.fromISO(booking.date).setZone("Europe/Rome").startOf("day")
       const isFuture = bookingDate >= today
@@ -148,7 +150,7 @@ export default function AdminBookingsPage() {
       const dateB = DateTime.fromISO(b.startsAt).setZone("Europe/Rome")
       return dateA.toMillis() - dateB.toMillis()
     })
-  }, [bookings, dateFilter, searchQuery, statusFilter, userTypeFilter])
+  }, [bookings, dateFilter, searchQuery, statusFilter, userTypeFilter, today])
 
   const loadBlackouts = useCallback(async () => {
     try {
