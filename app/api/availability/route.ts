@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getBookingsForDate } from "@/lib/repo"
+import { getBookingsForDate, getBlackoutsForDateRange } from "@/lib/repo"
 import { calculateAvailableSlots, calculateAllOccupiedSlots } from "@/lib/availability"
 import { AvailabilityResponse, BlackoutPeriod } from "@/lib/types"
 
-export const dynamic = "force-dynamic"
-export const revalidate = 0
+// Cache per 30 secondi - i dati di disponibilità cambiano raramente
+export const revalidate = 30
 
 export async function GET(request: NextRequest) {
   try {
@@ -58,12 +58,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Recupera bookings da Supabase per la data specificata
-    console.log('[API Availability] Richiesta disponibilità per:', { date, duration, resourceId })
     const bookings = await getBookingsForDate(resourceId, date)
-    console.log('[API Availability] Bookings recuperati:', bookings.length)
     
-    // Per ora blackouts sono vuoti (non ancora implementati in Supabase)
-    const blackouts: BlackoutPeriod[] = []
+    // Recupera blackouts per la data specificata
+    const blackouts = await getBlackoutsForDateRange(resourceId, date, date)
 
     // Calcola slot disponibili
     const { availableSlots, occupiedSlots } = calculateAvailableSlots(
@@ -75,11 +73,8 @@ export async function GET(request: NextRequest) {
     )
 
     // Calcola tutti gli slot occupati (indipendentemente dalla durata)
-    const allOccupiedSlots = calculateAllOccupiedSlots(date, bookings, resourceId)
-    console.log('[API Availability] Slot occupati calcolati:', {
-      allOccupiedSlots: allOccupiedSlots.length,
-      allOccupiedSlotsArray: allOccupiedSlots,
-    })
+    // Include sia bookings che blackout
+    const allOccupiedSlots = calculateAllOccupiedSlots(date, bookings, resourceId, blackouts)
 
     const response: AvailabilityResponse = {
       date,
@@ -89,13 +84,10 @@ export async function GET(request: NextRequest) {
       allOccupiedSlots,
     }
 
-    // Disabilita cache per assicurarsi che i dati siano sempre freschi
+    // Cache per 30 secondi - sufficiente per evitare richieste eccessive
     return NextResponse.json(response, {
       headers: {
-        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0',
-        'Surrogate-Control': 'no-store',
+        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
       },
     })
   } catch (error: unknown) {

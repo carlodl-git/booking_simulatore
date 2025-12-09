@@ -1,6 +1,14 @@
 import { supabaseAdmin } from './supabase'
-import { Booking, BookingWithCustomer, Customer } from './types'
+import { Booking, BookingWithCustomer, Customer, BlackoutPeriod, MaestroPayment, MaestroSummary } from './types'
 import { DateTime } from 'luxon'
+
+// Helper per logging solo in sviluppo
+const isDevelopment = process.env.NODE_ENV === 'development'
+const debugLog = (...args: unknown[]) => {
+  if (isDevelopment) {
+    console.log(...args)
+  }
+}
 
 type CustomerRow = {
   id: string
@@ -94,7 +102,7 @@ export async function getBookingsForDate(
   const dateStart = dateObj.startOf('day').toUTC()
   const dateEnd = dateObj.endOf('day').toUTC()
 
-  console.log('[getBookingsForDate] Ricerca bookings per:', {
+  debugLog('[getBookingsForDate] Ricerca bookings per:', {
     resourceId,
     dateISO,
     dateStart: dateStart.toISO(),
@@ -128,26 +136,11 @@ export async function getBookingsForDate(
     throw new Error(`Errore database: ${error.message}`)
   }
 
-  console.log('[getBookingsForDate] Bookings trovati:', (data ?? []).length)
-  if (data && data.length > 0) {
-    console.log('[getBookingsForDate] Primi bookings:', data.slice(0, 3).map(b => ({
-      id: b.id,
-      starts_at: b.starts_at,
-      ends_at: b.ends_at,
-    })))
-  }
+  debugLog('[getBookingsForDate] Bookings trovati:', (data ?? []).length)
 
   // Mappa i dati da Supabase al formato Booking
   const rows = (data ?? []) as BookingRow[]
   const bookings = rows.map(mapBookingFromDB)
-  console.log('[getBookingsForDate] Bookings mappati:', bookings.length)
-  if (bookings.length > 0) {
-    console.log('[getBookingsForDate] Primo booking mappato:', {
-      date: bookings[0].date,
-      startTime: bookings[0].startTime,
-      endTime: bookings[0].endTime,
-    })
-  }
   
   return bookings
 }
@@ -401,4 +394,604 @@ function mapBookingFromDB(row: BookingRow): Booking {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
+}
+
+// ==================== BLACKOUTS ====================
+
+type BlackoutRow = {
+  id: string
+  resource_id: string
+  start_date: string // DATE format YYYY-MM-DD
+  end_date: string   // DATE format YYYY-MM-DD
+  start_time: string | null // TIME format HH:mm:ss or NULL
+  end_time: string | null   // TIME format HH:mm:ss or NULL
+  reason: string | null
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * Recupera i blackout per un range di date
+ */
+export async function getBlackoutsForDateRange(
+  resourceId: string,
+  startDate: string, // YYYY-MM-DD
+  endDate: string    // YYYY-MM-DD
+): Promise<BlackoutPeriod[]> {
+  // Recupera blackout che si sovrappongono con il range richiesto
+  // Un blackout si sovrappone se: start_date <= endDate AND end_date >= startDate
+  const { data, error } = await supabaseAdmin
+    .from('blackouts')
+    .select('*')
+    .eq('resource_id', resourceId)
+    .lte('start_date', endDate)
+    .gte('end_date', startDate)
+    .order('start_date', { ascending: true })
+
+  if (error) {
+    console.error('Errore nel recupero blackouts:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+
+  const rows = (data ?? []) as BlackoutRow[]
+  return rows.map(mapBlackoutFromDB)
+}
+
+/**
+ * Recupera tutti i blackout
+ */
+export async function getAllBlackouts(resourceId?: string): Promise<BlackoutPeriod[]> {
+  let query = supabaseAdmin
+    .from('blackouts')
+    .select('*')
+    .order('start_date', { ascending: true })
+
+  if (resourceId) {
+    query = query.eq('resource_id', resourceId)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error('Errore nel recupero blackouts:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+
+  const rows = (data ?? []) as BlackoutRow[]
+  return rows.map(mapBlackoutFromDB)
+}
+
+/**
+ * Crea un nuovo blackout
+ */
+export async function createBlackout(blackout: {
+  resourceId: string
+  startDate: string // YYYY-MM-DD
+  endDate: string   // YYYY-MM-DD
+  startTime?: string // HH:mm (optional)
+  endTime?: string   // HH:mm (optional)
+  reason?: string
+}): Promise<BlackoutPeriod> {
+  const { data, error } = await supabaseAdmin
+    .from('blackouts')
+    .insert({
+      resource_id: blackout.resourceId,
+      start_date: blackout.startDate,
+      end_date: blackout.endDate,
+      start_time: blackout.startTime || null,
+      end_time: blackout.endTime || null,
+      reason: blackout.reason || null,
+    })
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Errore nella creazione blackout:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+
+  return mapBlackoutFromDB(data as BlackoutRow)
+}
+
+/**
+ * Aggiorna un blackout esistente
+ */
+export async function updateBlackout(
+  blackoutId: string,
+  updates: {
+    startDate?: string
+    endDate?: string
+    startTime?: string | null
+    endTime?: string | null
+    reason?: string | null
+  }
+): Promise<BlackoutPeriod> {
+  const updateData: Partial<BlackoutRow> = {}
+  
+  if (updates.startDate) updateData.start_date = updates.startDate
+  if (updates.endDate) updateData.end_date = updates.endDate
+  if (updates.startTime !== undefined) updateData.start_time = updates.startTime
+  if (updates.endTime !== undefined) updateData.end_time = updates.endTime
+  if (updates.reason !== undefined) updateData.reason = updates.reason
+
+  const { data, error } = await supabaseAdmin
+    .from('blackouts')
+    .update(updateData)
+    .eq('id', blackoutId)
+    .select()
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw new Error('Blackout non trovato')
+    }
+    console.error('Errore nell\'aggiornamento blackout:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+
+  return mapBlackoutFromDB(data as BlackoutRow)
+}
+
+/**
+ * Elimina un blackout
+ */
+export async function deleteBlackout(blackoutId: string): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('blackouts')
+    .delete()
+    .eq('id', blackoutId)
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw new Error('Blackout non trovato')
+    }
+    console.error('Errore nell\'eliminazione blackout:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+}
+
+/**
+ * Helper: Mappa i dati dal database al tipo BlackoutPeriod
+ */
+function mapBlackoutFromDB(row: BlackoutRow): BlackoutPeriod {
+  return {
+    id: row.id,
+    resourceId: row.resource_id,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    startTime: row.start_time ? row.start_time.substring(0, 5) : undefined, // Converti HH:mm:ss in HH:mm
+    endTime: row.end_time ? row.end_time.substring(0, 5) : undefined,
+    reason: row.reason || undefined,
+  }
+}
+
+/**
+ * Tipo per i dati dal database per maestro_payments
+ */
+type MaestroPaymentRow = {
+  id: string
+  booking_id: string
+  maestro_name: string
+  maestro_email: string
+  amount: number
+  paid: boolean
+  paid_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * Recupera tutte le prenotazioni "lezione-maestro" passate e non cancellate
+ * e crea/aggiorna i record di pagamento se non esistono
+ */
+export async function syncMaestroPayments(): Promise<void> {
+  const today = DateTime.now().setZone("Europe/Rome").startOf("day")
+  
+  // Recupera tutte le prenotazioni lezione-maestro passate e non cancellate con i dati del customer
+  const { data: bookings, error: bookingsError } = await supabaseAdmin
+    .from('bookings')
+    .select(`
+      id,
+      customer_first_name,
+      customer_last_name,
+      starts_at,
+      customer_id
+    `)
+    .eq('activity_type', 'lezione-maestro')
+    .eq('status', 'confirmed')
+    .lt('starts_at', today.toISO()!)
+    .order('starts_at', { ascending: false })
+
+  if (bookingsError) {
+    console.error('Errore nel recupero prenotazioni maestri:', bookingsError)
+    throw new Error(`Errore database: ${bookingsError.message}`)
+  }
+
+  if (!bookings || bookings.length === 0) {
+    return
+  }
+
+  // Recupera tutti i customers in una singola query per evitare N+1
+  const customerIds = [...new Set(bookings.map(b => b.customer_id).filter(Boolean))]
+  const { data: customers, error: customersError } = await supabaseAdmin
+    .from('customers')
+    .select('id, email')
+    .in('id', customerIds)
+
+  if (customersError) {
+    console.error('Errore nel recupero customers:', customersError)
+    throw new Error(`Errore database: ${customersError.message}`)
+  }
+
+  // Crea una mappa per accesso rapido alle email
+  const customerEmailMap = new Map<string, string>()
+  if (customers) {
+    for (const customer of customers) {
+      customerEmailMap.set(customer.id, customer.email.toLowerCase().trim())
+    }
+  }
+
+  // Recupera tutti i pagamenti esistenti in una singola query
+  const bookingIds = bookings.map(b => b.id)
+  const { data: existingPayments } = await supabaseAdmin
+    .from('maestro_payments')
+    .select('booking_id')
+    .in('booking_id', bookingIds)
+
+  const existingPaymentBookingIds = new Set(
+    existingPayments?.map((p: { booking_id: string }) => p.booking_id) || []
+  )
+
+  // Prepara i pagamenti da creare in batch
+  const paymentsToInsert: Array<{
+    booking_id: string
+    maestro_name: string
+    maestro_email: string
+    amount: number
+    paid: boolean
+  }> = []
+
+  for (const booking of bookings) {
+    // Salta se esiste già un pagamento
+    if (existingPaymentBookingIds.has(booking.id)) {
+      continue
+    }
+
+    const maestroName = `${booking.customer_first_name || ''} ${booking.customer_last_name || ''}`.trim()
+    
+    if (!maestroName) {
+      console.warn(`Prenotazione ${booking.id} senza nome maestro`)
+      continue
+    }
+
+    // Recupera l'email del customer dalla mappa
+    const maestroEmail = customerEmailMap.get(booking.customer_id)
+    if (!maestroEmail) {
+      console.warn(`Prenotazione ${booking.id} senza customer valido`)
+      continue
+    }
+
+    paymentsToInsert.push({
+      booking_id: booking.id,
+      maestro_name: maestroName,
+      maestro_email: maestroEmail,
+      amount: 10.00,
+      paid: false,
+    })
+  }
+
+  // Inserisci tutti i pagamenti in una singola query batch
+  if (paymentsToInsert.length > 0) {
+    const { error: insertError } = await supabaseAdmin
+      .from('maestro_payments')
+      .insert(paymentsToInsert)
+
+    if (insertError) {
+      console.error('Errore nella creazione batch pagamenti:', insertError)
+      throw new Error(`Errore database: ${insertError.message}`)
+    }
+  }
+}
+
+/**
+ * Recupera il riepilogo dei pagamenti per tutti i maestri
+ * Raggruppa per email (stesso maestro anche con nomi diversi)
+ */
+export async function getMaestroSummaries(): Promise<MaestroSummary[]> {
+  // Prima sincronizza i pagamenti
+  await syncMaestroPayments()
+
+  // Recupera tutti i pagamenti
+  const { data: payments, error } = await supabaseAdmin
+    .from('maestro_payments')
+    .select('*')
+    .order('maestro_email', { ascending: true })
+
+  if (error) {
+    console.error('Errore nel recupero pagamenti maestri:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+
+  if (!payments || payments.length === 0) {
+    return []
+  }
+
+  // Raggruppa per email (stesso maestro anche con nomi diversi)
+  const summariesMap = new Map<string, MaestroSummary>()
+
+  for (const payment of payments as MaestroPaymentRow[]) {
+    const maestroEmail = payment.maestro_email.toLowerCase().trim()
+    const maestroName = payment.maestro_name.trim()
+    
+    if (!summariesMap.has(maestroEmail)) {
+      summariesMap.set(maestroEmail, {
+        maestroEmail,
+        maestroNames: [],
+        totalOwed: 0,
+        totalPaid: 0,
+        pendingAmount: 0,
+        lessonsCount: 0,
+        paidLessonsCount: 0,
+      })
+    }
+
+    const summary = summariesMap.get(maestroEmail)!
+    
+    // Aggiungi il nome se non è già presente
+    if (!summary.maestroNames.includes(maestroName)) {
+      summary.maestroNames.push(maestroName)
+    }
+    
+    summary.lessonsCount++
+    summary.totalOwed += payment.amount
+
+    if (payment.paid) {
+      summary.paidLessonsCount++
+      summary.totalPaid += payment.amount
+    } else {
+      summary.pendingAmount += payment.amount
+    }
+  }
+
+  // Ordina i nomi per ogni summary
+  summariesMap.forEach((summary) => {
+    summary.maestroNames.sort()
+  })
+
+  return Array.from(summariesMap.values())
+}
+
+/**
+ * Recupera tutti i pagamenti per un maestro specifico (identificato per email)
+ */
+export async function getMaestroPayments(maestroEmail: string): Promise<(MaestroPayment & { booking: BookingWithCustomer })[]> {
+  await syncMaestroPayments()
+
+  const { data: payments, error } = await supabaseAdmin
+    .from('maestro_payments')
+    .select('*')
+    .eq('maestro_email', maestroEmail.toLowerCase().trim())
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Errore nel recupero pagamenti maestro:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+
+  if (!payments || payments.length === 0) {
+    return []
+  }
+
+  // Recupera le prenotazioni associate
+  const bookingIds = payments.map((p: MaestroPaymentRow) => p.booking_id)
+  const { data: bookingsData, error: bookingsError } = await supabaseAdmin
+    .from('bookings')
+    .select(`
+      *,
+      customer:customers(*)
+    `)
+    .in('id', bookingIds)
+
+  if (bookingsError) {
+    console.error('Errore nel recupero prenotazioni:', bookingsError)
+    throw new Error(`Errore database: ${bookingsError.message}`)
+  }
+
+  const bookingsMap = new Map<string, BookingWithCustomer>()
+  if (bookingsData) {
+    for (const row of bookingsData as BookingWithCustomerRow[]) {
+      const booking = mapBookingFromDB(row)
+      const customer = mapCustomerFromDB(row.customer)
+      applySnapshotToCustomer(row, customer)
+      bookingsMap.set(booking.id, {
+        ...booking,
+        customer,
+      })
+    }
+  }
+
+  // Combina pagamenti e prenotazioni
+  return payments.map((payment: MaestroPaymentRow) => {
+    const booking = bookingsMap.get(payment.booking_id)
+    if (!booking) {
+      throw new Error(`Prenotazione ${payment.booking_id} non trovata`)
+    }
+    return {
+      ...mapMaestroPaymentFromDB(payment),
+      booking,
+    }
+  })
+}
+
+/**
+ * Segna un pagamento come saldato
+ */
+export async function markMaestroPaymentAsPaid(paymentId: string): Promise<MaestroPayment> {
+  const { data, error } = await supabaseAdmin
+    .from('maestro_payments')
+    .update({
+      paid: true,
+      paid_at: new Date().toISOString(),
+    })
+    .eq('id', paymentId)
+    .select()
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw new Error('Pagamento non trovato')
+    }
+    console.error('Errore nell\'aggiornamento pagamento:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+
+  return mapMaestroPaymentFromDB(data as MaestroPaymentRow)
+}
+
+/**
+ * Segna un pagamento come non saldato (annulla il pagamento)
+ */
+export async function markMaestroPaymentAsUnpaid(paymentId: string): Promise<MaestroPayment> {
+  const { data, error } = await supabaseAdmin
+    .from('maestro_payments')
+    .update({
+      paid: false,
+      paid_at: null,
+    })
+    .eq('id', paymentId)
+    .select()
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw new Error('Pagamento non trovato')
+    }
+    console.error('Errore nell\'aggiornamento pagamento:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+
+  return mapMaestroPaymentFromDB(data as MaestroPaymentRow)
+}
+
+/**
+ * Helper: Mappa i dati dal database al tipo MaestroPayment
+ */
+function mapMaestroPaymentFromDB(row: MaestroPaymentRow): MaestroPayment {
+  return {
+    id: row.id,
+    bookingId: row.booking_id,
+    maestroName: row.maestro_name,
+    maestroEmail: row.maestro_email,
+    amount: row.amount,
+    paid: row.paid,
+    paidAt: row.paid_at || undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+/**
+ * Calcola il totale dovuto da tutti i maestri
+ */
+export async function getTotalMaestroOwed(): Promise<number> {
+  await syncMaestroPayments()
+
+  const { data, error } = await supabaseAdmin
+    .from('maestro_payments')
+    .select('amount, paid')
+  
+  if (error) {
+    console.error('Errore nel calcolo totale dovuto:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+
+  if (!data || data.length === 0) {
+    return 0
+  }
+
+  return data
+    .filter((p: { paid: boolean }) => !p.paid)
+    .reduce((sum: number, p: { amount: number }) => sum + p.amount, 0)
+}
+
+/**
+ * Calcola il totale incassato dai maestri (pagamenti saldati)
+ * Con filtri opzionali per periodo (data del pagamento)
+ */
+export async function getTotalMaestroPaid(
+  startDate?: string, // YYYY-MM-DD
+  endDate?: string    // YYYY-MM-DD
+): Promise<number> {
+  await syncMaestroPayments()
+
+  let query = supabaseAdmin
+    .from('maestro_payments')
+    .select('amount, paid_at')
+    .eq('paid', true)
+
+  // Applica filtri per periodo se forniti
+  if (startDate) {
+    const startDateTime = DateTime.fromISO(startDate, { zone: 'Europe/Rome' })
+      .startOf('day')
+      .toUTC()
+      .toISO()
+    query = query.gte('paid_at', startDateTime!)
+  }
+
+  if (endDate) {
+    const endDateTime = DateTime.fromISO(endDate, { zone: 'Europe/Rome' })
+      .endOf('day')
+      .toUTC()
+      .toISO()
+    query = query.lte('paid_at', endDateTime!)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error('Errore nel calcolo totale incassato:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+
+  if (!data || data.length === 0) {
+    return 0
+  }
+
+  return data.reduce((sum: number, p: { amount: number }) => sum + p.amount, 0)
+}
+
+/**
+ * Calcola il totale incassato da tutte le prenotazioni passate non cancellate
+ * - 20€ l'ora per tutte le attività tranne "lezione-maestro"
+ * - 10€ l'ora per "lezione-maestro"
+ */
+export async function getTotalRevenueFromPastBookings(): Promise<number> {
+  const today = DateTime.now().setZone("Europe/Rome").startOf("day").toUTC()
+
+  // Recupera tutte le prenotazioni passate e non cancellate
+  const { data: bookings, error } = await supabaseAdmin
+    .from('bookings')
+    .select('duration_minutes, activity_type')
+    .eq('status', 'confirmed')
+    .lt('starts_at', today.toISO()!)
+
+  if (error) {
+    console.error('Errore nel calcolo totale incassato:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+
+  if (!bookings || bookings.length === 0) {
+    return 0
+  }
+
+  let total = 0
+
+  for (const booking of bookings) {
+    const hours = booking.duration_minutes / 60
+    const isMaestroLesson = booking.activity_type === 'lezione-maestro'
+    const pricePerHour = isMaestroLesson ? 10 : 20
+    total += hours * pricePerHour
+  }
+
+  return total
 }

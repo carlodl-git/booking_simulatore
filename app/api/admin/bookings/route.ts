@@ -1,20 +1,31 @@
-import { NextResponse } from "next/server"
-import { getAllBookings } from "@/lib/repo"
+import { NextRequest, NextResponse } from "next/server"
+import { getAllBookings, getTotalRevenueFromPastBookings } from "@/lib/repo"
 
-// Force dynamic rendering - don't cache this route
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
+// Route admin - sempre dinamica ma con breve cache per ridurre carico
+export const revalidate = 10
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // Log environment variables for debugging (remove in production)
-    console.log('SUPABASE_URL:', process.env.SUPABASE_URL?.substring(0, 30) + '...')
-    console.log('SUPABASE_SERVICE_ROLE_KEY exists:', !!process.env.SUPABASE_SERVICE_ROLE_KEY)
+    const searchParams = request.nextUrl.searchParams
+    const includeRevenue = searchParams.get("includeRevenue") === "true"
+
+    // Limite ragionevole per evitare query troppo pesanti
+    const [bookings, totalRevenue] = await Promise.all([
+      getAllBookings(1000),
+      includeRevenue ? getTotalRevenueFromPastBookings() : Promise.resolve(0),
+    ])
     
-    const bookings = await getAllBookings(5000)
-    console.log('Total bookings fetched:', bookings.length)
+    const response: { bookings: unknown[]; totalRevenue?: number } = { bookings }
     
-    return NextResponse.json({ bookings })
+    if (includeRevenue) {
+      response.totalRevenue = totalRevenue
+    }
+    
+    return NextResponse.json(response, {
+      headers: {
+        'Cache-Control': 'private, s-maxage=10, stale-while-revalidate=30',
+      },
+    })
   } catch (error: unknown) {
     console.error("Error fetching all bookings:", error)
     const enrichedError =
