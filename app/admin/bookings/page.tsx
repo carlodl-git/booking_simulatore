@@ -99,6 +99,15 @@ export default function AdminBookingsPage() {
       
       const data = await response.json()
       const fetchedBookings = data.bookings || []
+      // Debug: verifica che i campi snapshot siano presenti
+      if (fetchedBookings.length > 0) {
+        console.log('Sample booking:', {
+          id: fetchedBookings[0].id,
+          customerFirstName: fetchedBookings[0].customerFirstName,
+          customerLastName: fetchedBookings[0].customerLastName,
+          customer: fetchedBookings[0].customer
+        })
+      }
       setBookings(fetchedBookings)
     } catch (error) {
       console.error("Error fetching bookings:", error)
@@ -477,7 +486,7 @@ export default function AdminBookingsPage() {
                           {booking.startTime} - {booking.endTime}
                         </TableCell>
                         <TableCell>
-                          {booking.customerFirstName || ''} {booking.customerLastName || ''}
+                          {(booking.customerFirstName || booking.customer?.firstName || '')} {(booking.customerLastName || booking.customer?.lastName || '')}
                         </TableCell>
                         <TableCell className="text-sm text-gray-600">
                           {booking.customer?.email}
@@ -550,7 +559,7 @@ export default function AdminBookingsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium text-gray-500">Nome</label>
-                  <p className="text-lg">{selectedBooking.customerFirstName || ''} {selectedBooking.customerLastName || ''}</p>
+                  <p className="text-lg">{(selectedBooking.customerFirstName || selectedBooking.customer?.firstName || '')} {(selectedBooking.customerLastName || selectedBooking.customer?.lastName || '')}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-500">Email</label>

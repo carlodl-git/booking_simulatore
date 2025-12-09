@@ -391,7 +391,7 @@ export default function HistoricalBookingsPage() {
                         {booking.startTime} - {booking.endTime}
                       </TableCell>
                       <TableCell>
-                        {booking.customerFirstName || ''} {booking.customerLastName || ''}
+                        {(booking.customerFirstName || booking.customer?.firstName || '')} {(booking.customerLastName || booking.customer?.lastName || '')}
                       </TableCell>
                       <TableCell className="text-sm text-gray-600">
                         {booking.customer?.email}
@@ -453,7 +453,7 @@ export default function HistoricalBookingsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium text-gray-500">Nome</label>
-                  <p className="text-lg">{selectedBooking.customerFirstName || ''} {selectedBooking.customerLastName || ''}</p>
+                  <p className="text-lg">{(selectedBooking.customerFirstName || selectedBooking.customer?.firstName || '')} {(selectedBooking.customerLastName || selectedBooking.customer?.lastName || '')}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-500">Email</label>
