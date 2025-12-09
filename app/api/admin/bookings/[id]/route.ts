@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { cancelBooking } from "@/lib/repo"
 import { BookingError } from "@/lib/types"
 
-// Force dynamic rendering - don't cache this route
-export const dynamic = 'force-dynamic'
+// Route per modifiche - non cacheabile ma non necessita force-dynamic
 export const revalidate = 0
 
 export async function PATCH(
@@ -12,6 +11,16 @@ export async function PATCH(
 ) {
   try {
     const bookingId = params.id
+    
+    // Validazione UUID
+    const { isValidUUID } = await import('@/lib/validation')
+    if (!isValidUUID(bookingId)) {
+      return NextResponse.json(
+        { error: "ID prenotazione non valido", code: "INVALID_ID" } as BookingError,
+        { status: 400 }
+      )
+    }
+    
     const body = await request.json()
 
     // Verifica che il body contenga status=cancelled

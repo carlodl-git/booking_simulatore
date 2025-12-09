@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
 import { getAllBookings } from "@/lib/repo"
 
-// Export CSV - sempre dinamico ma non necessita force-dynamic
-export const dynamic = 'force-dynamic'
+// Export CSV - sempre dinamico, non cacheabile
+export const revalidate = 0
 
 export async function GET() {
   try {
@@ -40,16 +40,21 @@ export async function GET() {
         "lezione-maestro": "Lezione maestro"
       }
 
+      // Usa campi snapshot dalla prenotazione invece del customer
+      const firstName = booking.customerFirstName || booking.customer?.firstName || ""
+      const lastName = booking.customerLastName || booking.customer?.lastName || ""
+      const userType = booking.customer?.userType || "esterno"
+      
       return [
         booking.id || "",
         booking.date || "",
         booking.startTime || "",
         booking.endTime || "",
-        booking.customer?.firstName || "",
-        booking.customer?.lastName || "",
+        firstName,
+        lastName,
         booking.customer?.email || "",
         booking.customer?.phone || "",
-        booking.customer?.userType === "socio" ? "Socio" : "Esterno",
+        userType === "socio" ? "Socio" : "Esterno",
         booking.players || "",
         activityTypeMap[booking.activityType] || booking.activityType,
         booking.durationMinutes || "",

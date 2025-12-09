@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getMaestroPayments } from "@/lib/repo"
 
-export const dynamic = 'force-dynamic'
+// Route admin - non cacheabile ma non necessita force-dynamic
 export const revalidate = 0
 
 export async function GET(

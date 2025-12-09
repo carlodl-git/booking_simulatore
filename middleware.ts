@@ -13,23 +13,25 @@ export function middleware(request: NextRequest) {
       return NextResponse.next()
     }
     
-    // Permetti l'accesso a tutte le API admin senza autenticazione
-    // (le API sono già protette dal fatto che sono accessibili solo dal dominio admin)
-    if (pathname.startsWith('/api/admin/')) {
-      return NextResponse.next()
-    }
-    
-    // Controlla se l'utente è autenticato solo per le pagine
+    // Verifica autenticazione per tutte le route admin (pagine E API)
     const authCookie = request.cookies.get('admin-auth')
+    const isAuthenticated = authCookie && authCookie.value === 'authenticated'
     
-    if (!authCookie || authCookie.value !== 'authenticated') {
+    if (!isAuthenticated) {
+      // Se è una richiesta API, restituisci 401 invece di redirect
+      if (pathname.startsWith('/api/admin/')) {
+        return NextResponse.json(
+          { error: "Non autorizzato", code: "UNAUTHORIZED" },
+          { status: 401 }
+        )
+      }
       // Per le pagine, reindirizza al login
       const loginUrl = new URL('/admin/login', request.url)
       return NextResponse.redirect(loginUrl)
     }
     
     // Autenticato: se non è già su una route admin, reindirizza a /admin/bookings
-    if (!pathname.startsWith('/admin')) {
+    if (!pathname.startsWith('/admin') && !pathname.startsWith('/api/admin')) {
       return NextResponse.rewrite(new URL('/admin/bookings', request.url))
     }
   }

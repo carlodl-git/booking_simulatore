@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { markMaestroPaymentAsPaid, markMaestroPaymentAsUnpaid } from "@/lib/repo"
 
-export const dynamic = 'force-dynamic'
+// Route admin - non cacheabile ma non necessita force-dynamic
 export const revalidate = 0
 
 export async function POST(
@@ -10,6 +10,16 @@ export async function POST(
 ) {
   try {
     const { id } = params
+    
+    // Validazione UUID
+    const { isValidUUID } = await import('@/lib/validation')
+    if (!isValidUUID(id)) {
+      return NextResponse.json(
+        { error: "ID pagamento non valido", code: "INVALID_ID" },
+        { status: 400 }
+      )
+    }
+    
     const body = await request.json()
     const { action } = body // 'paid' or 'unpaid'
 

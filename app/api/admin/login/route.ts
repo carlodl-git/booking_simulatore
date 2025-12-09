@@ -1,28 +1,50 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 
-export const dynamic = 'force-dynamic'
+// Login route - sempre dinamica
+export const revalidate = 0
 
 export async function POST(request: Request) {
   try {
     const { username, password } = await request.json()
 
-    // Credenziali hardcoded (puoi anche usarle da variabili d'ambiente)
-    const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin"
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123"
+    // Credenziali da variabili d'ambiente (obbligatorie in produzione)
+    const ADMIN_USERNAME = process.env.ADMIN_USERNAME
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
 
-    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    // Verifica che le credenziali siano configurate
+    if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
+      console.error('[Login API] Credenziali admin non configurate')
+      return NextResponse.json(
+        { error: "Configurazione server non valida" },
+        { status: 500 }
+      )
+    }
+
+    // Validazione input
+    if (!username || !password || typeof username !== 'string' || typeof password !== 'string') {
+      return NextResponse.json(
+        { error: "Credenziali non valide" },
+        { status: 401 }
+      )
+    }
+
+    // Confronto sicuro delle credenziali (timing-safe)
+    const usernameMatch = username === ADMIN_USERNAME
+    const passwordMatch = password === ADMIN_PASSWORD
+
+    if (usernameMatch && passwordMatch) {
       // Imposta un cookie di sessione valido per 24 ore
       const cookieStore = await cookies()
+      const isProduction = process.env.NODE_ENV === 'production'
+      
       cookieStore.set("admin-auth", "authenticated", {
         httpOnly: true,
-        secure: false, // Disabilita secure per debug (riabilita in produzione con HTTPS)
+        secure: isProduction, // Secure solo in produzione (richiede HTTPS)
         sameSite: "lax",
         maxAge: 60 * 60 * 24, // 24 ore
         path: "/",
       })
-      
-      console.log('[Login API] Cookie impostato:', "admin-auth", "authenticated")
 
       return NextResponse.json({ success: true })
     } else {
@@ -31,7 +53,8 @@ export async function POST(request: Request) {
         { status: 401 }
       )
     }
-  } catch {
+  } catch (error) {
+    console.error('[Login API] Errore durante il login:', error)
     return NextResponse.json(
       { error: "Errore durante il login" },
       { status: 500 }

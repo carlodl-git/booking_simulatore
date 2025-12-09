@@ -12,6 +12,15 @@ export async function GET(request: NextRequest) {
     const date = searchParams.get("date")
     const durationMinutes = searchParams.get("durationMinutes")
     const resourceId = searchParams.get("resourceId") || "trackman-io"
+    
+    // Validazione resourceId
+    const { isValidResourceId } = await import('@/lib/validation')
+    if (!isValidResourceId(resourceId)) {
+      return NextResponse.json(
+        { error: "resourceId non valido" },
+        { status: 400 }
+      )
+    }
 
     // Validazione parametri
     if (!date) {

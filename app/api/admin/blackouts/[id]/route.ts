@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { updateBlackout, deleteBlackout } from "@/lib/repo"
 
-export const dynamic = 'force-dynamic'
+// Route admin - non cacheabile ma non necessita force-dynamic
 export const revalidate = 0
 
 /**
@@ -14,6 +14,16 @@ export async function PUT(
 ) {
   try {
     const blackoutId = params.id
+    
+    // Validazione UUID
+    const { isValidUUID } = await import('@/lib/validation')
+    if (!isValidUUID(blackoutId)) {
+      return NextResponse.json(
+        { error: "ID blackout non valido" },
+        { status: 400 }
+      )
+    }
+    
     const body = await request.json()
 
     // Validazione formato date (se specificate)
@@ -89,6 +99,15 @@ export async function DELETE(
 ) {
   try {
     const blackoutId = params.id
+    
+    // Validazione UUID
+    const { isValidUUID } = await import('@/lib/validation')
+    if (!isValidUUID(blackoutId)) {
+      return NextResponse.json(
+        { error: "ID blackout non valido" },
+        { status: 400 }
+      )
+    }
     
     await deleteBlackout(blackoutId)
 

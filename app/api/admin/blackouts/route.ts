@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAllBlackouts, createBlackout } from "@/lib/repo"
 
-export const dynamic = 'force-dynamic'
+// Route admin - non cacheabile ma non necessita force-dynamic
 export const revalidate = 0
 
 /**
@@ -39,6 +39,15 @@ export async function POST(request: NextRequest) {
     if (!body.resourceId || !body.startDate || !body.endDate) {
       return NextResponse.json(
         { error: "resourceId, startDate e endDate sono obbligatori" },
+        { status: 400 }
+      )
+    }
+    
+    // Validazione resourceId
+    const { isValidResourceId } = await import('@/lib/validation')
+    if (!isValidResourceId(body.resourceId)) {
+      return NextResponse.json(
+        { error: "resourceId non valido" },
         { status: 400 }
       )
     }

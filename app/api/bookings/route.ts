@@ -32,10 +32,41 @@ export async function POST(request: NextRequest) {
   try {
     const body: CreateBookingRequest = await request.json()
 
-    // Validazione input
+    // Validazione input con controlli di lunghezza
+    const { isValidEmail, validateStringLength } = await import('@/lib/validation')
+    
     if (!body.customer?.firstName || !body.customer?.lastName || !body.customer?.email) {
       return NextResponse.json(
         { error: "Dati customer incompleti", code: "INVALID_INPUT" } as BookingError,
+        { status: 400 }
+      )
+    }
+    
+    // Validazione lunghezza campi
+    if (!validateStringLength(body.customer.firstName, 2, 100)) {
+      return NextResponse.json(
+        { error: "Il nome deve essere tra 2 e 100 caratteri", code: "INVALID_INPUT" } as BookingError,
+        { status: 400 }
+      )
+    }
+    
+    if (!validateStringLength(body.customer.lastName, 2, 100)) {
+      return NextResponse.json(
+        { error: "Il cognome deve essere tra 2 e 100 caratteri", code: "INVALID_INPUT" } as BookingError,
+        { status: 400 }
+      )
+    }
+    
+    if (!isValidEmail(body.customer.email)) {
+      return NextResponse.json(
+        { error: "Email non valida", code: "INVALID_INPUT" } as BookingError,
+        { status: 400 }
+      )
+    }
+    
+    if (body.customer.phone && !validateStringLength(body.customer.phone, 5, 20)) {
+      return NextResponse.json(
+        { error: "Il telefono deve essere tra 5 e 20 caratteri", code: "INVALID_INPUT" } as BookingError,
         { status: 400 }
       )
     }
