@@ -317,7 +317,7 @@ export default function MaestriPage() {
               <Calendar className="h-5 w-5" />
               Totale Storico Incassato
             </CardTitle>
-            <CardDescription>Filtra per periodo per vedere l'incasso in un determinato range di date</CardDescription>
+            <CardDescription>Filtra per periodo per vedere l&apos;incasso in un determinato range di date</CardDescription>
           </CardHeader>
           <CardContent className="pt-6">
             <div className="space-y-4">

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getBookingsForDate, getBlackoutsForDateRange } from "@/lib/repo"
 import { calculateAvailableSlots, calculateAllOccupiedSlots } from "@/lib/availability"
-import { AvailabilityResponse, BlackoutPeriod } from "@/lib/types"
+import { AvailabilityResponse } from "@/lib/types"
 
 // Cache per 30 secondi - i dati di disponibilità cambiano raramente
 export const revalidate = 30

@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { DateTime } from "luxon"
-import { Calendar, X, Plus, Edit, Trash2, RefreshCw, LogOut } from "lucide-react"
+import { Calendar, Plus, Edit, Trash2, RefreshCw, LogOut } from "lucide-react"
 import { DatePicker } from "@/components/ui/date-picker"
 import Link from "next/link"
 
@@ -288,7 +288,7 @@ export default function BlackoutsPage() {
                 <div className="space-y-2">
                   <Label>Data Inizio *</Label>
                   <DatePicker
-                    date={formData.startDate}
+                    date={formData.startDate || undefined}
                     onDateChange={(date) => setFormData({ ...formData, startDate: date as Date })}
                     placeholder="Seleziona data inizio"
                   />
@@ -296,7 +296,7 @@ export default function BlackoutsPage() {
                 <div className="space-y-2">
                   <Label>Data Fine *</Label>
                   <DatePicker
-                    date={formData.endDate}
+                    date={formData.endDate || undefined}
                     onDateChange={(date) => setFormData({ ...formData, endDate: date as Date })}
                     placeholder="Seleziona data fine"
                   />
