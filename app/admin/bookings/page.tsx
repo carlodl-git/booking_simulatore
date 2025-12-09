@@ -467,16 +467,21 @@ export default function AdminBookingsPage() {
                       const bookingDate = DateTime.fromISO(booking.date).setZone("Europe/Rome").startOf("day")
                       const isToday = bookingDate.hasSame(today, "day")
                       
-                      // Debug: verifica campi snapshot
+                      // Usa SEMPRE i campi snapshot dalla prenotazione (customer_first_name, customer_last_name)
+                      // NON usare booking.customer.firstName/lastName
                       const displayName = [booking.customerFirstName || '', booking.customerLastName || ''].filter(Boolean).join(' ') || 'N/A'
-                      if (!booking.customerFirstName && !booking.customerLastName) {
-                        console.warn('Booking senza campi snapshot:', {
-                          id: booking.id,
-                          customerFirstName: booking.customerFirstName,
-                          customerLastName: booking.customerLastName,
-                          customer: booking.customer
-                        })
-                      }
+                      
+                      // Debug: log per ogni booking per verificare i dati
+                      console.log('Booking display:', {
+                        id: booking.id,
+                        customerFirstName: booking.customerFirstName,
+                        customerLastName: booking.customerLastName,
+                        customerFirstNameType: typeof booking.customerFirstName,
+                        customerLastNameType: typeof booking.customerLastName,
+                        displayName: displayName,
+                        customerFirstNameFromCustomer: booking.customer?.firstName,
+                        customerLastNameFromCustomer: booking.customer?.lastName
+                      })
                       
                       return (
                       <TableRow key={booking.id} className={isToday ? "bg-teal-50 hover:bg-teal-100 border-l-4 border-teal-600" : ""}>
