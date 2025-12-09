@@ -78,6 +78,16 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+    
+    // Validazione resourceId se specificato
+    const resourceId = body.resourceId || "trackman-io"
+    const { isValidResourceId } = await import('@/lib/validation')
+    if (!isValidResourceId(resourceId)) {
+      return NextResponse.json(
+        { error: "resourceId non valido", code: "INVALID_INPUT" } as BookingError,
+        { status: 400 }
+      )
+    }
 
     // Supporta sia formato date+startTime che startsAt
     let startsAt: string
