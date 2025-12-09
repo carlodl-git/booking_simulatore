@@ -41,8 +41,8 @@ interface Booking {
   updatedAt: string
   customer: Customer
   // Campi snapshot dalla prenotazione (nome/cognome al momento della prenotazione)
-  customerFirstName?: string
-  customerLastName?: string
+  customerFirstName: string | null
+  customerLastName: string | null
 }
 
 const formatDate = (dateStr: string) => {
