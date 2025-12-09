@@ -33,6 +33,9 @@ export interface Booking {
   notes?: string
   createdAt: string
   updatedAt: string
+  // Campi snapshot dalla prenotazione (nome/cognome al momento della prenotazione)
+  customerFirstName?: string
+  customerLastName?: string
 }
 
 export interface BlackoutPeriod {

@@ -40,6 +40,9 @@ interface Booking {
   createdAt: string
   updatedAt: string
   customer: Customer
+  // Campi snapshot dalla prenotazione (nome/cognome al momento della prenotazione)
+  customerFirstName?: string
+  customerLastName?: string
 }
 
 const formatDate = (dateStr: string) => {
@@ -473,7 +476,7 @@ export default function AdminBookingsPage() {
                           {booking.startTime} - {booking.endTime}
                         </TableCell>
                         <TableCell>
-                          {booking.customer?.firstName} {booking.customer?.lastName}
+                          {booking.customerFirstName || booking.customer?.firstName} {booking.customerLastName || booking.customer?.lastName}
                         </TableCell>
                         <TableCell className="text-sm text-gray-600">
                           {booking.customer?.email}
@@ -546,7 +549,7 @@ export default function AdminBookingsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium text-gray-500">Nome</label>
-                  <p className="text-lg">{selectedBooking.customer?.firstName} {selectedBooking.customer?.lastName}</p>
+                  <p className="text-lg">{selectedBooking.customerFirstName || selectedBooking.customer?.firstName} {selectedBooking.customerLastName || selectedBooking.customer?.lastName}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-500">Email</label>
