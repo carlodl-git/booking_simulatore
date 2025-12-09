@@ -125,8 +125,8 @@ export default function AdminBookingsPage() {
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter(booking => {
-        const firstName = (booking.customerFirstName || booking.customer?.firstName || '').toLowerCase()
-        const lastName = (booking.customerLastName || booking.customer?.lastName || '').toLowerCase()
+        const firstName = (booking.customerFirstName || '').toLowerCase()
+        const lastName = (booking.customerLastName || '').toLowerCase()
         const email = (booking.customer?.email || '').toLowerCase()
         return firstName.includes(query) || lastName.includes(query) || email.includes(query)
       })
@@ -477,7 +477,7 @@ export default function AdminBookingsPage() {
                           {booking.startTime} - {booking.endTime}
                         </TableCell>
                         <TableCell>
-                          {[booking.customerFirstName || booking.customer?.firstName || '', booking.customerLastName || booking.customer?.lastName || ''].filter(Boolean).join(' ')}
+                          {[booking.customerFirstName || '', booking.customerLastName || ''].filter(Boolean).join(' ') || 'N/A'}
                         </TableCell>
                         <TableCell className="text-sm text-gray-600">
                           {booking.customer?.email}
@@ -550,7 +550,7 @@ export default function AdminBookingsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium text-gray-500">Nome</label>
-                  <p className="text-lg">{[selectedBooking.customerFirstName || selectedBooking.customer?.firstName || '', selectedBooking.customerLastName || selectedBooking.customer?.lastName || ''].filter(Boolean).join(' ')}</p>
+                  <p className="text-lg">{[selectedBooking.customerFirstName || '', selectedBooking.customerLastName || ''].filter(Boolean).join(' ') || 'N/A'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-500">Email</label>
