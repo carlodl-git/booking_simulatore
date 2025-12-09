@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
-
+    
     // Supporta sia formato date+startTime che startsAt
     let startsAt: string
     let endsAt: string
@@ -112,8 +112,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
-
-    const resourceId = body.resourceId || "trackman-io"
 
     // Upsert customer
     const customer = await upsertCustomer({
