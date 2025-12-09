@@ -24,9 +24,16 @@ RESEND_API_KEY=your_resend_api_key
 # Admin email (for booking notifications)
 ADMIN_EMAIL=admin@montecchia-performance.com
 
+# Admin authentication (OBBLIGATORIO in produzione)
+ADMIN_USERNAME=your_admin_username
+ADMIN_PASSWORD=your_secure_password
+
 # Base URL (used for internal API calls)
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
 ```
+
+**⚠️ IMPORTANTE**: Le credenziali `ADMIN_USERNAME` e `ADMIN_PASSWORD` sono **obbligatorie** in produzione. 
+Senza queste variabili, il login admin non funzionerà. Assicurati di usare password sicure.
 
 3. Run the development server:
 
