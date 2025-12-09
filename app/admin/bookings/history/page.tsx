@@ -111,14 +111,15 @@ export default function HistoricalBookingsPage() {
       filtered = filtered.filter(booking => booking.status !== "cancelled")
     }
 
-    // Search filter
+    // Search filter - cerca nei campi snapshot della prenotazione
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(booking => 
-        booking.customer?.firstName.toLowerCase().includes(query) ||
-        booking.customer?.lastName.toLowerCase().includes(query) ||
-        booking.customer?.email.toLowerCase().includes(query)
-      )
+      filtered = filtered.filter(booking => {
+        const firstName = (booking.customerFirstName || booking.customer?.firstName || '').toLowerCase()
+        const lastName = (booking.customerLastName || booking.customer?.lastName || '').toLowerCase()
+        const email = (booking.customer?.email || '').toLowerCase()
+        return firstName.includes(query) || lastName.includes(query) || email.includes(query)
+      })
     }
 
     // Status filter (solo se showCancelled è true, altrimenti ignoriamo questo filtro per le cancellate)
