@@ -21,16 +21,18 @@ interface TimeSlotPickerProps {
 function generateTimeSlots(occupiedSlots: string[] = []): TimeSlot[] {
   const slots: TimeSlot[] = []
   
-  // Normalizza gli slot occupati per assicurarsi che siano nel formato HH:mm
-  const normalizedOccupied = occupiedSlots.map(slot => {
-    // Rimuovi eventuali secondi o millisecondi (es. "10:00:00" -> "10:00")
-    return slot.split(':').slice(0, 2).join(':')
-  })
+  // Normalizza gli slot occupati e converti in Set per lookup O(1)
+  const normalizedOccupiedSet = new Set(
+    occupiedSlots.map(slot => {
+      // Rimuovi eventuali secondi o millisecondi (es. "10:00:00" -> "10:00")
+      return slot.split(':').slice(0, 2).join(':')
+    })
+  )
   
   // Inizia alle 9:30
   slots.push({
     time: "09:30",
-    available: !normalizedOccupied.includes("09:30"),
+    available: !normalizedOccupiedSet.has("09:30"),
   })
   
   // Continua dalle 10:00 alle 22:30 ogni 30 minuti
@@ -39,7 +41,7 @@ function generateTimeSlots(occupiedSlots: string[] = []): TimeSlot[] {
       const time = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`
       slots.push({
         time,
-        available: !normalizedOccupied.includes(time),
+        available: !normalizedOccupiedSet.has(time),
       })
     }
   }
@@ -47,7 +49,7 @@ function generateTimeSlots(occupiedSlots: string[] = []): TimeSlot[] {
   // Aggiungi 23:00 come ultimo slot
   slots.push({
     time: "23:00",
-    available: !normalizedOccupied.includes("23:00"),
+    available: !normalizedOccupiedSet.has("23:00"),
   })
   
   return slots
@@ -60,26 +62,8 @@ export function TimeSlotPicker({
   occupiedSlots = [],
   className,
 }: TimeSlotPickerProps) {
-  // Debug logging
-  React.useEffect(() => {
-    console.log('[TimeSlotPicker] Props ricevute:', {
-      availableSlots: availableSlots?.length || 0,
-      occupiedSlots: occupiedSlots.length,
-      occupiedSlotsArray: occupiedSlots,
-    })
-  }, [availableSlots, occupiedSlots])
-  
   // Se vengono passati slot custom, li usiamo, altrimenti generiamo quelli di default
   const slots = availableSlots || generateTimeSlots(occupiedSlots)
-  
-  // Debug: conta slot disponibili vs occupati
-  const availableCount = slots.filter(s => s.available).length
-  const occupiedCount = slots.filter(s => !s.available).length
-  console.log('[TimeSlotPicker] Slot generati:', {
-    total: slots.length,
-    available: availableCount,
-    occupied: occupiedCount,
-  })
 
   return (
     <div className={cn("space-y-3", className)}>

@@ -138,9 +138,9 @@ function checkAvailability(
   const endTime = calculateEndTime(startTime, duration)
   const requiredSlots = generateTimeSlotsBetween(startTime, endTime)
   
-  const conflictingSlots = requiredSlots.filter((slot) =>
-    occupiedSlots.includes(slot)
-  )
+  // Usa Set per lookup O(1) invece di Array.includes() O(n)
+  const occupiedSet = new Set(occupiedSlots)
+  const conflictingSlots = requiredSlots.filter((slot) => occupiedSet.has(slot))
   
   return {
     available: conflictingSlots.length === 0,
@@ -182,9 +182,6 @@ async function submitBookingRequest(bookingData: {
 
 // This is a Next.js Page component - no route handlers should be exported from this file
 export default function BookPage() {
-  // DEBUG: Verifica che il codice aggiornato venga eseguito
-  console.log("BookPage component loaded - Version: 2025-01-15 - lezione-maestro included")
-  
   const [duration, setDuration] = useState<string>("")
   const [occupiedSlots, setOccupiedSlots] = useState<string[]>([])
   const [availabilityError, setAvailabilityError] = useState<string>("")
@@ -275,7 +272,6 @@ export default function BookPage() {
 
   // Carica gli slot occupati quando cambia la data
   useEffect(() => {
-    console.log('[BookPage] useEffect triggered - selectedDate:', selectedDate)
     if (selectedDate) {
       // Reset del time selezionato quando cambia la data
       setValue("time", "")

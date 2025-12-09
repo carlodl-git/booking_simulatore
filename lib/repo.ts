@@ -299,8 +299,32 @@ export async function getAllBookings(limit: number = 1000): Promise<BookingWithC
   const { data, error } = await supabaseAdmin
     .from('bookings')
     .select(`
-      *,
-      customer:customers(*)
+      id,
+      customer_id,
+      resource_id,
+      starts_at,
+      ends_at,
+      duration_minutes,
+      activity_type,
+      players,
+      status,
+      notes,
+      customer_first_name,
+      customer_last_name,
+      customer_phone,
+      customer_user_type,
+      created_at,
+      updated_at,
+      customer:customers(
+        id,
+        first_name,
+        last_name,
+        email,
+        phone,
+        user_type,
+        created_at,
+        updated_at
+      )
     `)
     .order('starts_at', { ascending: false })
     .limit(limit)
@@ -422,7 +446,7 @@ export async function getBlackoutsForDateRange(
   // Un blackout si sovrappone se: start_date <= endDate AND end_date >= startDate
   const { data, error } = await supabaseAdmin
     .from('blackouts')
-    .select('*')
+    .select('id, resource_id, start_date, end_date, start_time, end_time, reason, created_at, updated_at')
     .eq('resource_id', resourceId)
     .lte('start_date', endDate)
     .gte('end_date', startDate)
@@ -443,7 +467,7 @@ export async function getBlackoutsForDateRange(
 export async function getAllBlackouts(resourceId?: string): Promise<BlackoutPeriod[]> {
   let query = supabaseAdmin
     .from('blackouts')
-    .select('*')
+    .select('id, resource_id, start_date, end_date, start_time, end_time, reason, created_at, updated_at')
     .order('start_date', { ascending: true })
 
   if (resourceId) {
@@ -701,10 +725,10 @@ export async function getMaestroSummaries(): Promise<MaestroSummary[]> {
   // Prima sincronizza i pagamenti
   await syncMaestroPayments()
 
-  // Recupera tutti i pagamenti
+  // Recupera tutti i pagamenti (solo colonne necessarie)
   const { data: payments, error } = await supabaseAdmin
     .from('maestro_payments')
-    .select('*')
+    .select('id, booking_id, maestro_name, maestro_email, amount, paid, paid_at, created_at, updated_at')
     .order('maestro_email', { ascending: true })
 
   if (error) {
@@ -769,7 +793,7 @@ export async function getMaestroPayments(maestroEmail: string): Promise<(Maestro
 
   const { data: payments, error } = await supabaseAdmin
     .from('maestro_payments')
-    .select('*')
+    .select('id, booking_id, maestro_name, maestro_email, amount, paid, paid_at, created_at, updated_at')
     .eq('maestro_email', maestroEmail.toLowerCase().trim())
     .order('created_at', { ascending: false })
 

@@ -8,7 +8,14 @@ import { Resend } from "resend"
 import { BookingConfirmationEmail, AdminNotificationEmail } from "@/components/email-template"
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
-console.log('Resend inizializzato:', resend ? 'SÌ' : 'NO', 'RESEND_API_KEY presente:', !!process.env.RESEND_API_KEY)
+
+// Helper per logging solo in sviluppo
+const isDevelopment = process.env.NODE_ENV === 'development'
+const debugLog = (...args: unknown[]) => {
+  if (isDevelopment) {
+    console.log(...args)
+  }
+}
 
 /**
  * Converte date e time in un timestamp ISO usando Europe/Rome timezone
@@ -99,10 +106,7 @@ export async function POST(request: NextRequest) {
 
     // Invia email di conferma al cliente e notifica all'admin
     // Solo se Resend è configurato
-    console.log('Controllo Resend - resend object:', resend ? 'presente' : 'null')
-    console.log('RESEND_API_KEY env var:', process.env.RESEND_API_KEY ? 'presente' : 'NON presente')
     if (resend) {
-      console.log('Resend configurato, invio email...')
       try {
         const durationHours = Math.floor(booking.durationMinutes / 60)
         const durationMinutes = booking.durationMinutes % 60
@@ -117,20 +121,21 @@ export async function POST(request: NextRequest) {
         
         // SICUREZZA: Se contiene onboarding@resend.dev, forza SEMPRE il dominio verificato
         if (fromEmail.includes('onboarding@resend.dev') || fromEmail.includes('resend.dev')) {
-          console.warn('⚠️ ATTENZIONE: Trovato dominio resend.dev, forzo uso dominio verificato')
+          debugLog('⚠️ ATTENZIONE: Trovato dominio resend.dev, forzo uso dominio verificato')
           fromEmail = verifiedDomainEmail
         }
         
         // Assicurati che usi sempre il dominio verificato
         if (!fromEmail.includes('montecchiaperformancecenter.it')) {
-          console.warn('⚠️ ATTENZIONE: From email non usa dominio verificato, forzo correzione')
+          debugLog('⚠️ ATTENZIONE: From email non usa dominio verificato, forzo correzione')
           fromEmail = verifiedDomainEmail
         }
         
-        console.log('🔍 DEBUG EMAIL CONFIG:')
-        console.log('  RESEND_FROM_EMAIL env var:', process.env.RESEND_FROM_EMAIL || 'NON IMPOSTATO (userà default)')
-        console.log('  From email che verrà usato:', fromEmail)
-        console.log('  Invio email cliente a:', customer.email)
+        debugLog('🔍 DEBUG EMAIL CONFIG:', {
+          fromEmail,
+          customerEmail: customer.email,
+        })
+        
         // Email al cliente
         resend.emails.send({
           from: fromEmail,
@@ -148,17 +153,12 @@ export async function POST(request: NextRequest) {
             activityType: booking.activityType,
             userType: customer.userType,
           }),
-        }).then(result => {
-          console.log('✅ Email cliente inviata con successo:', JSON.stringify(result, null, 2))
-        })
-          .catch(emailError => {
+        }).catch(emailError => {
+          // Log solo errori critici in produzione
           console.error('❌ Errore invio email cliente:', emailError)
-          console.error('Dettagli errore:', JSON.stringify(emailError, null, 2))
         })
 
         const adminEmail = process.env.ADMIN_EMAIL || 'info@montecchiaperformancecenter.it'
-        console.log('ADMIN_EMAIL env var:', process.env.ADMIN_EMAIL)
-        console.log('Invio email admin a:', adminEmail)
         // Email all'admin
         resend.emails.send({
           from: fromEmail,
@@ -178,23 +178,17 @@ export async function POST(request: NextRequest) {
             email: customer.email,
             phone: customer.phone,
           }),
-        }).then(result => {
-          console.log('✅ Email admin inviata con successo:', JSON.stringify(result, null, 2))
-        })
-        .catch(emailError => {
+        }).catch(emailError => {
+          // Log solo errori critici in produzione
           console.error('❌ Errore invio email admin:', emailError)
-          console.error('Dettagli errore:', JSON.stringify(emailError, null, 2))
         })
       } catch (emailError) {
         // Log l'errore ma non bloccare la risposta
         console.error('❌ Errore nella configurazione email:', emailError)
-        console.error('Dettagli errore completo:', JSON.stringify(emailError, null, 2))
         if (emailError instanceof Error) {
           console.error('Stack trace:', emailError.stack)
         }
       }
-    } else {
-      console.log('Resend NON configurato - salto invio email')
     }
 
     return NextResponse.json(response, { status: 201 })
