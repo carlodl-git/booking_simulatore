@@ -5,8 +5,8 @@ const nextConfig = {
     // ignoreBuildErrors: true,
   },
   eslint: {
-    // Disabilita l'ESLint durante il build per test
-    ignoreDuringBuilds: false,
+    // Disabilita l'ESLint durante il build (Vercel non installa devDependencies)
+    ignoreDuringBuilds: true,
   },
   // Security headers per produzione
   async headers() {
