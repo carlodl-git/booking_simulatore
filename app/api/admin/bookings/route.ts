@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getAllBookings, getTotalRevenueFromPastBookings } from "@/lib/repo"
 
 // Route admin - sempre dinamica ma con breve cache per ridurre carico
+export const dynamic = 'force-dynamic'
 export const revalidate = 10
 
 export async function GET(request: NextRequest) {

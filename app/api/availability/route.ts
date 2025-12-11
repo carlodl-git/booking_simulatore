@@ -3,6 +3,8 @@ import { getBookingsForDate, getBlackoutsForDateRange } from "@/lib/repo"
 import { calculateAvailableSlots, calculateAllOccupiedSlots } from "@/lib/availability"
 import { AvailabilityResponse } from "@/lib/types"
 
+// Route dinamica - usa searchParams quindi non può essere statica
+export const dynamic = 'force-dynamic'
 // Cache per 30 secondi - i dati di disponibilità cambiano raramente
 export const revalidate = 30
 
