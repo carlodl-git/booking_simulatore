@@ -29,6 +29,7 @@ interface MaestroPayment {
   amount: number
   paid: boolean
   paidAt?: string
+  notDue: boolean
   createdAt: string
   updatedAt: string
   booking: {
@@ -163,6 +164,64 @@ export default function MaestriPage() {
       }
     } catch (error) {
       console.error("Error marking payment as unpaid:", error)
+      alert("Errore durante l'aggiornamento del pagamento")
+    }
+  }
+
+  const handleMarkAsNotDue = async (paymentId: string) => {
+    if (!confirm("Sei sicuro di voler segnare questa lezione come 'pagamento non dovuto'? Questo rimuoverà la lezione dal calcolo dei soldi da pagare ma non la inserirà nell'incasso storico.")) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/admin/maestri/payments/${paymentId}`, {
+        method: "POST",
+        credentials: 'include',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: 'not_due' })
+      })
+
+      if (response.ok) {
+        // Aggiorna la lista dei pagamenti
+        if (selectedMaestroEmail) {
+          await fetchMaestroPayments(selectedMaestroEmail)
+        }
+        // Aggiorna i riepiloghi
+        await fetchSummaries()
+      } else {
+        alert("Errore durante l'aggiornamento del pagamento")
+      }
+    } catch (error) {
+      console.error("Error marking payment as not due:", error)
+      alert("Errore durante l'aggiornamento del pagamento")
+    }
+  }
+
+  const handleMarkAsDue = async (paymentId: string) => {
+    if (!confirm("Sei sicuro di voler ripristinare questa lezione come 'da pagare'? Questo la rimetterà nel calcolo dei soldi da pagare.")) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/admin/maestri/payments/${paymentId}`, {
+        method: "POST",
+        credentials: 'include',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: 'due' })
+      })
+
+      if (response.ok) {
+        // Aggiorna la lista dei pagamenti
+        if (selectedMaestroEmail) {
+          await fetchMaestroPayments(selectedMaestroEmail)
+        }
+        // Aggiorna i riepiloghi
+        await fetchSummaries()
+      } else {
+        alert("Errore durante l'aggiornamento del pagamento")
+      }
+    } catch (error) {
+      console.error("Error marking payment as due:", error)
       alert("Errore durante l'aggiornamento del pagamento")
     }
   }
@@ -436,10 +495,15 @@ export default function MaestriPage() {
                         <TableCell>€{payment.amount.toFixed(2)}</TableCell>
                         <TableCell>
                           <Badge
-                            variant={payment.paid ? "default" : "destructive"}
-                            className={payment.paid ? "bg-green-500" : "bg-orange-500"}
+                            variant={payment.notDue ? "secondary" : payment.paid ? "default" : "destructive"}
+                            className={payment.notDue ? "bg-gray-400" : payment.paid ? "bg-green-500" : "bg-orange-500"}
                           >
-                            {payment.paid ? (
+                            {payment.notDue ? (
+                              <>
+                                <XCircle className="mr-1 h-3 w-3" />
+                                Non dovuto
+                              </>
+                            ) : payment.paid ? (
                               <>
                                 <CheckCircle className="mr-1 h-3 w-3" />
                                 Saldato
@@ -453,25 +517,48 @@ export default function MaestriPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {payment.paid ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleMarkAsUnpaid(payment.id)}
-                            >
-                              Annulla Pagamento
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="default"
-                              size="sm"
-                              className="bg-green-600 hover:bg-green-700"
-                              onClick={() => handleMarkAsPaid(payment.id)}
-                            >
-                              <CheckCircle className="mr-1 h-4 w-4" />
-                              Segna come Saldato
-                            </Button>
-                          )}
+                          <div className="flex gap-2">
+                            {payment.notDue ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="border-blue-500 text-blue-600 hover:bg-blue-50"
+                                onClick={() => handleMarkAsDue(payment.id)}
+                              >
+                                <CheckCircle className="mr-1 h-4 w-4" />
+                                Ripristina come Da Pagare
+                              </Button>
+                            ) : payment.paid ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleMarkAsUnpaid(payment.id)}
+                              >
+                                Annulla Pagamento
+                              </Button>
+                            ) : (
+                              <>
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  className="bg-green-600 hover:bg-green-700"
+                                  onClick={() => handleMarkAsPaid(payment.id)}
+                                >
+                                  <CheckCircle className="mr-1 h-4 w-4" />
+                                  Segna come Saldato
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-orange-500 text-orange-600 hover:bg-orange-50"
+                                  onClick={() => handleMarkAsNotDue(payment.id)}
+                                >
+                                  <XCircle className="mr-1 h-4 w-4" />
+                                  Pagamento non dovuto
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}

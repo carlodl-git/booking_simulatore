@@ -111,6 +111,7 @@ export interface MaestroPayment {
   amount: number
   paid: boolean
   paidAt?: string
+  notDue: boolean // Se true, il pagamento non è dovuto e non viene incluso nei calcoli
   createdAt: string
   updatedAt: string
 }

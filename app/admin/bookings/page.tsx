@@ -90,7 +90,7 @@ export default function AdminBookingsPage() {
       setLoading(true)
       // Lascia che la cache del server gestisca la validità dei dati
       // Aggiungi timestamp per evitare cache del browser in sviluppo
-      const cacheBuster = process.env.NODE_ENV === 'development' ? `&_t=${Date.now()}` : ''
+      const cacheBuster = process.env.NODE_ENV === 'development' ? `?_t=${Date.now()}` : ''
       const response = await fetch(`/api/admin/bookings${cacheBuster}`, {
         credentials: 'include', // Include cookies in the request
         cache: 'no-store', // Disabilita cache del browser per admin
@@ -117,10 +117,22 @@ export default function AdminBookingsPage() {
   const filteredBookings = useMemo(() => {
     // Filter out past bookings first
     let filtered = bookings.filter(booking => {
+      if (!booking.date) {
+        return false
+      }
+      
       const bookingDate = DateTime.fromISO(booking.date).setZone("Europe/Rome").startOf("day")
-      const isFuture = bookingDate >= today
+      
+      if (!bookingDate.isValid) {
+        return false
+      }
+      
+      // Usa toMillis() per confronto numerico più affidabile
+      const isFuture = bookingDate.toMillis() >= today.toMillis()
+      
       // Escludi anche le prenotazioni cancellate
       const isNotCancelled = booking.status !== "cancelled"
+      
       return isFuture && isNotCancelled
     })
 

@@ -609,6 +609,7 @@ type MaestroPaymentRow = {
   amount: number
   paid: boolean
   paid_at: string | null
+  not_due?: boolean // Opzionale per retrocompatibilità se il campo non esiste ancora
   created_at: string
   updated_at: string
 }
@@ -735,9 +736,11 @@ export async function getMaestroSummaries(): Promise<MaestroSummary[]> {
   await syncMaestroPayments()
 
   // Recupera tutti i pagamenti (solo colonne necessarie)
+  // Non filtriamo not_due nella query per evitare errori se il campo non esiste ancora
+  // Filtriamo nel codice invece
   const { data: payments, error } = await supabaseAdmin
     .from('maestro_payments')
-    .select('id, booking_id, maestro_name, maestro_email, amount, paid, paid_at, created_at, updated_at')
+    .select('id, booking_id, maestro_name, maestro_email, amount, paid, paid_at, not_due, created_at, updated_at')
     .order('maestro_email', { ascending: true })
 
   if (error) {
@@ -775,6 +778,12 @@ export async function getMaestroSummaries(): Promise<MaestroSummary[]> {
       summary.maestroNames.push(maestroName)
     }
     
+    // Escludi pagamenti not_due dai calcoli
+    // Gestisci anche il caso in cui not_due potrebbe non esistere ancora (default false)
+    if (payment.not_due === true) {
+      continue // Salta questo pagamento ma continua con gli altri
+    }
+
     summary.lessonsCount++
     summary.totalOwed += payment.amount
 
@@ -802,7 +811,7 @@ export async function getMaestroPayments(maestroEmail: string): Promise<(Maestro
 
   const { data: payments, error } = await supabaseAdmin
     .from('maestro_payments')
-    .select('id, booking_id, maestro_name, maestro_email, amount, paid, paid_at, created_at, updated_at')
+    .select('id, booking_id, maestro_name, maestro_email, amount, paid, paid_at, not_due, created_at, updated_at')
     .eq('maestro_email', maestroEmail.toLowerCase().trim())
     .order('created_at', { ascending: false })
 
@@ -907,6 +916,60 @@ export async function markMaestroPaymentAsUnpaid(paymentId: string): Promise<Mae
 }
 
 /**
+ * Segna un pagamento come "non dovuto"
+ * Rimuove la lezione dal calcolo dei soldi da pagare ma non la inserisce nell'incasso storico
+ */
+export async function markMaestroPaymentAsNotDue(paymentId: string): Promise<MaestroPayment> {
+  const { data, error } = await supabaseAdmin
+    .from('maestro_payments')
+    .update({
+      not_due: true,
+      paid: false, // Assicurati che non sia segnato come pagato
+      paid_at: null, // Rimuovi la data di pagamento se presente
+    })
+    .eq('id', paymentId)
+    .select()
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw new Error('Pagamento non trovato')
+    }
+    console.error('Errore nell\'aggiornamento pagamento:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+
+  return mapMaestroPaymentFromDB(data as MaestroPaymentRow)
+}
+
+/**
+ * Ripristina un pagamento da "non dovuto" a "da pagare"
+ * Rimette la lezione nel calcolo dei soldi da pagare
+ */
+export async function markMaestroPaymentAsDue(paymentId: string): Promise<MaestroPayment> {
+  const { data, error } = await supabaseAdmin
+    .from('maestro_payments')
+    .update({
+      not_due: false,
+      paid: false, // Assicurati che non sia segnato come pagato
+      paid_at: null, // Rimuovi la data di pagamento se presente
+    })
+    .eq('id', paymentId)
+    .select()
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw new Error('Pagamento non trovato')
+    }
+    console.error('Errore nell\'aggiornamento pagamento:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+
+  return mapMaestroPaymentFromDB(data as MaestroPaymentRow)
+}
+
+/**
  * Helper: Mappa i dati dal database al tipo MaestroPayment
  */
 function mapMaestroPaymentFromDB(row: MaestroPaymentRow): MaestroPayment {
@@ -918,6 +981,7 @@ function mapMaestroPaymentFromDB(row: MaestroPaymentRow): MaestroPayment {
     amount: row.amount,
     paid: row.paid,
     paidAt: row.paid_at || undefined,
+    notDue: (row as any).not_due === true, // Gestisci il caso in cui il campo potrebbe non esistere
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -931,7 +995,7 @@ export async function getTotalMaestroOwed(): Promise<number> {
 
   const { data, error } = await supabaseAdmin
     .from('maestro_payments')
-    .select('amount, paid')
+    .select('amount, paid, not_due')
   
   if (error) {
     console.error('Errore nel calcolo totale dovuto:', error)
@@ -943,7 +1007,7 @@ export async function getTotalMaestroOwed(): Promise<number> {
   }
 
   return data
-    .filter((p: { paid: boolean }) => !p.paid)
+    .filter((p: { paid: boolean; not_due?: boolean }) => !p.paid && !(p.not_due === true))
     .reduce((sum: number, p: { amount: number }) => sum + p.amount, 0)
 }
 
@@ -959,7 +1023,7 @@ export async function getTotalMaestroPaid(
 
   let query = supabaseAdmin
     .from('maestro_payments')
-    .select('amount, paid_at')
+    .select('amount, paid_at, not_due')
     .eq('paid', true)
 
   // Applica filtri per periodo se forniti
@@ -990,7 +1054,10 @@ export async function getTotalMaestroPaid(
     return 0
   }
 
-  return data.reduce((sum: number, p: { amount: number }) => sum + p.amount, 0)
+  // Escludi pagamenti not_due dal totale incassato
+  return data
+    .filter((p: { not_due?: boolean }) => !(p.not_due === true))
+    .reduce((sum: number, p: { amount: number }) => sum + p.amount, 0)
 }
 
 /**

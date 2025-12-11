@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { markMaestroPaymentAsPaid, markMaestroPaymentAsUnpaid } from "@/lib/repo"
+import { markMaestroPaymentAsPaid, markMaestroPaymentAsUnpaid, markMaestroPaymentAsNotDue, markMaestroPaymentAsDue } from "@/lib/repo"
 
 // Route admin - non cacheabile ma non necessita force-dynamic
 export const revalidate = 0
@@ -21,16 +21,20 @@ export async function POST(
     }
     
     const body = await request.json()
-    const { action } = body // 'paid' or 'unpaid'
+    const { action } = body // 'paid', 'unpaid', 'not_due', or 'due'
 
     let payment
     if (action === 'paid') {
       payment = await markMaestroPaymentAsPaid(id)
     } else if (action === 'unpaid') {
       payment = await markMaestroPaymentAsUnpaid(id)
+    } else if (action === 'not_due') {
+      payment = await markMaestroPaymentAsNotDue(id)
+    } else if (action === 'due') {
+      payment = await markMaestroPaymentAsDue(id)
     } else {
       return NextResponse.json(
-        { error: "Azione non valida. Usa 'paid' o 'unpaid'", code: "INVALID_ACTION" },
+        { error: "Azione non valida. Usa 'paid', 'unpaid', 'not_due' o 'due'", code: "INVALID_ACTION" },
         { status: 400 }
       )
     }
