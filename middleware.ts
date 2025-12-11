@@ -40,8 +40,11 @@ export function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl)
     }
     
-    // Autenticato: se non è già su una route admin, reindirizza a /admin/bookings
-    if (!pathname.startsWith('/admin') && !pathname.startsWith('/api/admin')) {
+    // Autenticato: permette l'accesso a route admin e API bookings
+    // Se non è una route admin o API bookings, reindirizza a /admin/bookings
+    if (!pathname.startsWith('/admin') && 
+        !pathname.startsWith('/api/admin') && 
+        !pathname.startsWith('/api/bookings')) {
       return NextResponse.rewrite(new URL('/admin/bookings', request.url))
     }
   }
