@@ -179,54 +179,17 @@ export async function POST(request: NextRequest) {
         // Genera token di cancellazione
         const cancelToken = generateCancelToken(booking.id)
         
-        // URL di produzione corretto (sempre usato in produzione)
+        // FORZA sempre l'URL di produzione corretto per le email
+        // Questo garantisce che le email abbiano sempre l'URL corretto, indipendentemente
+        // dalle variabili d'ambiente o configurazioni
         const PRODUCTION_URL = 'https://booking.montecchiaperformancecenter.it'
+        const cancelUrl = `${PRODUCTION_URL}/cancel/${cancelToken}`
         
-        // Costruisci URL base
-        let baseUrl: string
-        
-        // In produzione, usa sempre l'URL corretto
-        if (process.env.NODE_ENV === 'production') {
-          baseUrl = PRODUCTION_URL
-        } else {
-          // In sviluppo, prova variabili d'ambiente o header
-          baseUrl = process.env.NEXT_PUBLIC_BASE_URL || ''
-          
-          if (!baseUrl) {
-            const host = request.headers.get('host')
-            const protocol = request.headers.get('x-forwarded-proto') || 
-                            (host?.includes('localhost') ? 'http' : 'https')
-            
-            if (host) {
-              baseUrl = `${protocol}://${host}`
-            } else if (process.env.VERCEL_URL) {
-              baseUrl = `https://${process.env.VERCEL_URL}`
-            } else {
-              baseUrl = PRODUCTION_URL
-            }
-          }
-        }
-        
-        // Correzione automatica errori di battitura comuni
-        baseUrl = baseUrl
-          .replace('montecchiaperformancenter', 'montecchiaperformancecenter')
-          .replace('montecchiaperformacecenter', 'montecchiaperformancecenter')
-          .replace('montecchiaperformancenter', 'montecchiaperformancecenter')
-        
-        // Verifica finale: se contiene "montecchia" ma non "performancecenter", forza l'URL corretto
-        if (baseUrl.includes('montecchia') && !baseUrl.includes('montecchiaperformancecenter.it')) {
-          console.warn('⚠️ URL base contiene errore, forzo URL di produzione:', baseUrl)
-          baseUrl = PRODUCTION_URL
-        }
-        
-        const cancelUrl = `${baseUrl}/cancel/${cancelToken}`
-        
-        // Log sempre in produzione per debug
+        // Log per debug (sempre, anche in produzione)
         console.log('🔍 URL di cancellazione generato:', {
-          baseUrl,
           cancelUrl,
+          bookingId: booking.id,
           nodeEnv: process.env.NODE_ENV,
-          hasNextPublicBaseUrl: !!process.env.NEXT_PUBLIC_BASE_URL,
         })
 
         // Email al cliente
