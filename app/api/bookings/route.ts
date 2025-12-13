@@ -6,6 +6,7 @@ import { DateTime } from "luxon"
 import { TIMEZONE } from "@/lib/availability"
 import { Resend } from "resend"
 import { BookingConfirmationEmail, AdminNotificationEmail } from "@/components/email-template"
+import { generateCancelToken } from "@/lib/cancel-token"
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 
@@ -175,6 +176,14 @@ export async function POST(request: NextRequest) {
           customerEmail: customer.email,
         })
         
+        // Genera token di cancellazione
+        const cancelToken = generateCancelToken(booking.id)
+        
+        // Costruisci URL base (usa variabile d'ambiente o inferisci dalla request)
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
+          (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+        const cancelUrl = `${baseUrl}/cancel/${cancelToken}`
+
         // Email al cliente
         resend.emails.send({
           from: fromEmail,
@@ -191,6 +200,8 @@ export async function POST(request: NextRequest) {
             players: booking.players,
             activityType: booking.activityType,
             userType: customer.userType,
+            cancelToken,
+            cancelUrl,
           }),
         }).catch(emailError => {
           // Log solo errori critici in produzione

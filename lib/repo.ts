@@ -260,6 +260,52 @@ export async function createBookingTx({
 }
 
 /**
+ * Recupera una prenotazione per ID
+ */
+export async function getBookingById(bookingId: string): Promise<Booking> {
+  const { data, error } = await supabaseAdmin
+    .from('bookings')
+    .select(`
+      id,
+      customer_id,
+      resource_id,
+      starts_at,
+      ends_at,
+      duration_minutes,
+      activity_type,
+      players,
+      status,
+      notes,
+      customer_first_name,
+      customer_last_name,
+      customer_phone,
+      customer_user_type,
+      created_at,
+      updated_at
+    `)
+    .eq('id', bookingId)
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      // Not found
+      const notFoundError: HttpError = new Error('Prenotazione non trovata')
+      notFoundError.code = 'NOT_FOUND'
+      notFoundError.httpStatus = 404
+      throw notFoundError
+    }
+
+    console.error('Errore nel recupero booking:', error)
+    const dbError: HttpError = new Error(`Errore database: ${error.message}`)
+    dbError.code = 'DB_ERROR'
+    dbError.httpStatus = 500
+    throw dbError
+  }
+
+  return mapBookingFromDB(data as BookingRow)
+}
+
+/**
  * Aggiorna lo status di una prenotazione a 'cancelled'
  */
 export async function cancelBooking(bookingId: string): Promise<Booking> {

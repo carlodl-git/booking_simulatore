@@ -9,6 +9,8 @@ interface EmailTemplateProps {
   players: number
   activityType: string
   userType: string
+  cancelToken?: string // Token per la cancellazione
+  cancelUrl?: string // URL completo per la cancellazione
 }
 
 export function BookingConfirmationEmail({ 
@@ -21,7 +23,9 @@ export function BookingConfirmationEmail({
   duration,
   players,
   activityType,
-  userType
+  userType,
+  cancelToken,
+  cancelUrl
 }: EmailTemplateProps) {
   const formatActivityType = (type: string) => {
     switch (type) {
@@ -99,6 +103,19 @@ export function BookingConfirmationEmail({
           </p>
         </div>
 
+        ${cancelUrl ? `
+        <div style="text-align: center; margin-bottom: 30px; padding: 20px; background-color: #fef2f2; border-radius: 8px; border: 1px solid #fecaca;">
+          <p style="margin: 0 0 12px 0; font-size: 14px; color: #991b1b;">
+            <strong>Vuoi cancellare questa prenotazione?</strong>
+          </p>
+          <a href="${cancelUrl}" style="display: inline-block; padding: 12px 24px; background-color: #dc2626; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">
+            Cancella Prenotazione
+          </a>
+          <p style="margin: 12px 0 0 0; font-size: 12px; color: #7f1d1d;">
+            ⚠️ La cancellazione è possibile solo entro 24 ore prima dell'orario prenotato
+          </p>
+        </div>
+        ` : ''}
         <div style="text-align: center; padding-top: 20px; border-top: 1px solid #e2e8f0; font-size: 14px; color: #64748b;">
           <p style="margin: 0 0 8px 0;">
             Per domande o modifiche, contattaci all'indirizzo email fornito durante la registrazione.
