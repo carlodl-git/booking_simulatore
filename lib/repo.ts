@@ -665,9 +665,24 @@ type MaestroPaymentRow = {
  * e crea/aggiorna i record di pagamento se non esistono
  */
 export async function syncMaestroPayments(): Promise<void> {
-  const today = DateTime.now().setZone("Europe/Rome").startOf("day")
+  // Includiamo tutte le lezioni del giorno stesso (anche quelle future) nel totale dovuto
+  // Questo permette alle lezioni di apparire nel totale dovuto il giorno stesso in cui sono programmate
+  const now = DateTime.now().setZone("Europe/Rome")
+  const today = now.startOf("day")
+  const endOfToday = today.endOf("day")
   
-  // Recupera tutte le prenotazioni lezione-maestro passate e non cancellate con i dati del customer
+  // Converti la fine del giorno in UTC per la query al database
+  // endOfToday è già in Europe/Rome, quindi toUTC() lo converte correttamente in UTC
+  const endOfTodayUTC = endOfToday.toUTC().toISO()!
+  
+  debugLog('[syncMaestroPayments] Recupero lezioni fino a:', {
+    today: today.toISO(),
+    endOfToday: endOfToday.toISO(),
+    endOfTodayUTC,
+  })
+  
+  // Recupera tutte le prenotazioni lezione-maestro fino alla fine del giorno corrente (incluso il giorno stesso) e non cancellate
+  // La query include tutte le lezioni con starts_at <= fine del giorno corrente, quindi anche quelle future del giorno stesso
   const { data: bookings, error: bookingsError } = await supabaseAdmin
     .from('bookings')
     .select(`
@@ -679,7 +694,7 @@ export async function syncMaestroPayments(): Promise<void> {
     `)
     .eq('activity_type', 'lezione-maestro')
     .eq('status', 'confirmed')
-    .lt('starts_at', today.toISO()!)
+    .lte('starts_at', endOfTodayUTC)
     .order('starts_at', { ascending: false })
 
   if (bookingsError) {
@@ -909,6 +924,34 @@ export async function getMaestroPayments(maestroEmail: string): Promise<(Maestro
       booking,
     }
   })
+}
+
+/**
+ * Recupera il pagamento maestro per una prenotazione specifica (booking_id)
+ */
+export async function getMaestroPaymentByBookingId(bookingId: string): Promise<MaestroPayment | null> {
+  await syncMaestroPayments()
+
+  const { data: payment, error } = await supabaseAdmin
+    .from('maestro_payments')
+    .select('id, booking_id, maestro_name, maestro_email, amount, paid, paid_at, not_due, created_at, updated_at')
+    .eq('booking_id', bookingId)
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      // Not found - non esiste ancora un payment per questa prenotazione
+      return null
+    }
+    console.error('Errore nel recupero pagamento maestro:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+
+  if (!payment) {
+    return null
+  }
+
+  return mapMaestroPaymentFromDB(payment as MaestroPaymentRow)
 }
 
 /**

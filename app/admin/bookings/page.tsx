@@ -70,6 +70,19 @@ interface Blackout {
   reason?: string
 }
 
+interface MaestroPayment {
+  id: string
+  bookingId: string
+  maestroName: string
+  maestroEmail: string
+  amount: number
+  paid: boolean
+  paidAt?: string
+  notDue: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 export default function AdminBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([])
   const [blackouts, setBlackouts] = useState<Blackout[]>([])
@@ -78,6 +91,8 @@ export default function AdminBookingsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [viewMode, setViewMode] = useState<"table" | "calendar">("table")
   const [totalMaestroOwed, setTotalMaestroOwed] = useState<number | null>(null) // null = loading
+  const [maestroPayment, setMaestroPayment] = useState<MaestroPayment | null>(null)
+  const [loadingPayment, setLoadingPayment] = useState(false)
   
   // Filters
   const [searchQuery, setSearchQuery] = useState("")
@@ -265,9 +280,83 @@ export default function AdminBookingsPage() {
     }
   }
 
-  const handleBookingClick = (booking: Booking) => {
+  const handleBookingClick = async (booking: Booking) => {
     setSelectedBooking(booking)
     setIsModalOpen(true)
+    
+    // Se è una prenotazione "lezione-maestro", recupera il payment
+    if (booking.activityType === "lezione-maestro") {
+      setLoadingPayment(true)
+      try {
+        const response = await fetch(`/api/admin/maestri/bookings/${booking.id}`, {
+          credentials: 'include',
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          setMaestroPayment(data.payment)
+        } else {
+          setMaestroPayment(null)
+        }
+      } catch (error) {
+        console.error("Error fetching maestro payment:", error)
+        setMaestroPayment(null)
+      } finally {
+        setLoadingPayment(false)
+      }
+    } else {
+      setMaestroPayment(null)
+    }
+  }
+  
+  const handleMarkAsPaid = async () => {
+    if (!selectedBooking || !maestroPayment) return
+    
+    try {
+      const response = await fetch(`/api/admin/maestri/bookings/${selectedBooking.id}`, {
+        method: "POST",
+        credentials: 'include',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "paid" })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setMaestroPayment(data)
+        fetchTotalMaestroOwed() // Aggiorna il totale dovuto
+      } else {
+        const errorData = await response.json()
+        alert(`Errore: ${errorData.error || "Errore durante l'aggiornamento"}`)
+      }
+    } catch (error) {
+      console.error("Error marking payment as paid:", error)
+      alert("Errore durante l'aggiornamento del pagamento")
+    }
+  }
+  
+  const handleMarkAsNotDue = async () => {
+    if (!selectedBooking || !maestroPayment) return
+    
+    try {
+      const response = await fetch(`/api/admin/maestri/bookings/${selectedBooking.id}`, {
+        method: "POST",
+        credentials: 'include',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "not_due" })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setMaestroPayment(data)
+        fetchTotalMaestroOwed() // Aggiorna il totale dovuto
+      } else {
+        const errorData = await response.json()
+        alert(`Errore: ${errorData.error || "Errore durante l'aggiornamento"}`)
+      }
+    } catch (error) {
+      console.error("Error marking payment as not due:", error)
+      alert("Errore durante l'aggiornamento del pagamento")
+    }
   }
 
   if (loading) {
@@ -315,7 +404,7 @@ export default function AdminBookingsPage() {
                 <Euro className="h-6 w-6 text-orange-600" />
                 <div>
                   <CardTitle className="text-lg">Totale dovuto dai Maestri</CardTitle>
-                  <CardDescription>Lezioni passate non ancora saldate</CardDescription>
+                  <CardDescription>Lezioni del giorno stesso e passate non ancora saldate</CardDescription>
                 </div>
               </div>
                 <div className="flex items-center gap-4">
@@ -556,7 +645,13 @@ export default function AdminBookingsPage() {
       </div>
 
       {/* Booking Detail Modal */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+      <Dialog open={isModalOpen} onOpenChange={(open) => {
+        setIsModalOpen(open)
+        if (!open) {
+          // Reset payment quando si chiude il dialog
+          setMaestroPayment(null)
+        }
+      }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Dettagli Prenotazione</DialogTitle>
@@ -635,22 +730,76 @@ export default function AdminBookingsPage() {
                 </div>
               )}
 
+              {/* Maestro Payment Info */}
+              {selectedBooking.activityType === "lezione-maestro" && (
+                <div className="pt-4 border-t">
+                  <div className="mb-4">
+                    <label className="text-sm font-medium text-gray-500">Pagamento Maestro</label>
+                    {loadingPayment ? (
+                      <p className="text-lg text-gray-400">Caricamento...</p>
+                    ) : maestroPayment ? (
+                      <div className="mt-2 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Badge variant={maestroPayment.paid ? "default" : "secondary"}>
+                            {maestroPayment.paid ? "Saldato" : "Da saldare"}
+                          </Badge>
+                          {maestroPayment.notDue && (
+                            <Badge variant="outline">Non dovuto</Badge>
+                          )}
+                          <span className="text-lg font-semibold">€{maestroPayment.amount.toFixed(2)}</span>
+                        </div>
+                        {maestroPayment.paidAt && (
+                          <p className="text-sm text-gray-500">
+                            Saldato il: {formatDate(maestroPayment.paidAt)}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-lg text-gray-400">Pagamento non ancora creato</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Actions */}
               {selectedBooking.status === "confirmed" && (
-                <div className="flex gap-2 pt-4 border-t">
-                  <Button
-                    variant="destructive"
-                    onClick={() => {
-                      if (confirm("Sei sicuro di voler cancellare questa prenotazione?")) {
-                        handleCancelBooking()
-                      }
-                    }}
-                  >
-                    Cancella Prenotazione
-                  </Button>
-                  <Button variant="outline" onClick={() => setIsModalOpen(false)}>
-                    Chiudi
-                  </Button>
+                <div className="flex flex-col gap-2 pt-4 border-t">
+                  {/* Maestro Payment Actions */}
+                  {selectedBooking.activityType === "lezione-maestro" && maestroPayment && !maestroPayment.paid && !maestroPayment.notDue && (
+                    <div className="flex gap-2 pb-2 border-b">
+                      <Button
+                        variant="default"
+                        onClick={handleMarkAsPaid}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        <Euro className="mr-2 h-4 w-4" />
+                        Segna come saldato
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={handleMarkAsNotDue}
+                      >
+                        Pagamento non dovuto
+                      </Button>
+                    </div>
+                  )}
+                  
+                  {/* Standard Actions */}
+                  <div className="flex gap-2">
+                    <Button
+                      variant="destructive"
+                      onClick={() => {
+                        if (confirm("Sei sicuro di voler cancellare questa prenotazione?")) {
+                          handleCancelBooking()
+                        }
+                      }}
+                    >
+                      Cancella Prenotazione
+                    </Button>
+                    <Button variant="outline" onClick={() => setIsModalOpen(false)}>
+                      Chiudi
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
