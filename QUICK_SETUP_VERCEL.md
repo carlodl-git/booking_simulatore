@@ -104,3 +104,6 @@ Dopo il redeploy:
 3. **Logs**: Controlla i logs su Vercel per vedere eventuali errori
 4. **Console Browser**: Apri DevTools → Console per vedere errori lato client
 
+
+
+

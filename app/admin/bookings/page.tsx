@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DateTime } from "luxon"
-import { Calendar, X, Download, Search, Filter, List, Grid, RefreshCw, LogOut, Ban, Euro } from "lucide-react"
+import { Calendar, X, Download, Search, Filter, List, Grid, RefreshCw, LogOut, Ban, Euro, Clock } from "lucide-react"
 import { DatePicker } from "@/components/ui/date-picker"
 import { CalendarView } from "@/components/admin/CalendarView"
 import Link from "next/link"
@@ -814,6 +814,12 @@ export default function AdminBookingsPage() {
             <Button variant="outline" className="w-full">
               <Calendar className="mr-2 h-4 w-4" />
               Storico Prenotazioni
+            </Button>
+          </Link>
+          <Link href="/admin/weekly-hours">
+            <Button variant="outline" className="w-full">
+              <Clock className="mr-2 h-4 w-4" />
+              Orari Settimanali
             </Button>
           </Link>
           <Link href="/admin/blackouts">

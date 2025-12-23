@@ -17,7 +17,8 @@ import {
 } from "@/components/ui/select"
 import { DatePicker } from "@/components/ui/date-picker"
 import { TimeSlotPicker } from "@/components/ui/time-slot-picker"
-import { ArrowLeft, Clock, Loader2 } from "lucide-react"
+import { ArrowLeft, Clock, Loader2, MessageCircle } from "lucide-react"
+import { DateTime } from "luxon"
 
 const bookingSchema = z.object({
   firstName: z.string().min(2, "Il nome deve avere almeno 2 caratteri"),
@@ -103,6 +104,20 @@ function calculateEndTime(startTime: string, duration: string): string {
   return `${endHours.toString().padStart(2, "0")}:${endMinutes.toString().padStart(2, "0")}`
 }
 
+// Converte il giorno della settimana in italiano
+function getDayNameInItalian(date: Date): string {
+  const dayNames = [
+    "domenica",
+    "lunedì",
+    "martedì",
+    "mercoledì",
+    "giovedì",
+    "venerdì",
+    "sabato"
+  ]
+  return dayNames[date.getDay()]
+}
+
 // Genera tutti gli slot tra orario iniziale e finale (intervalli di 30 minuti)
 function generateTimeSlotsBetween(startTime: string, endTime: string): string[] {
   const slots: string[] = []
@@ -184,6 +199,9 @@ async function submitBookingRequest(bookingData: {
 export default function BookPage() {
   const [duration, setDuration] = useState<string>("")
   const [occupiedSlots, setOccupiedSlots] = useState<string[]>([])
+  const [availableSlots, setAvailableSlots] = useState<Array<{ time: string; available: boolean }>>([])
+  const [openingHours, setOpeningHours] = useState<{ openTime: string; closeTime: string } | null | undefined>(undefined)
+  const [hasFullDayBlackout, setHasFullDayBlackout] = useState<boolean>(false)
   const [availabilityError, setAvailabilityError] = useState<string>("")
   const [endTime, setEndTime] = useState<string>("")
   const [slotsLoading, setSlotsLoading] = useState<boolean>(false)
@@ -298,12 +316,11 @@ export default function BookPage() {
           return res.json()
         })
         .then(data => {
-          
           // Assicurati che allOccupiedSlots sia un array
-          const slots = Array.isArray(data.allOccupiedSlots) ? data.allOccupiedSlots : []
+          const allOccupied = Array.isArray(data.allOccupiedSlots) ? data.allOccupiedSlots : []
           
-          // Normalizza gli slot per assicurarsi che siano nel formato HH:mm
-          const normalizedSlots = slots.map((slot: string) => {
+          // Normalizza gli slot occupati per assicurarsi che siano nel formato HH:mm
+          const normalizedOccupied = allOccupied.map((slot: string) => {
             if (typeof slot === 'string') {
               // Rimuovi eventuali secondi o millisecondi (es. "10:00:00" -> "10:00")
               return slot.split(':').slice(0, 2).join(':')
@@ -311,17 +328,63 @@ export default function BookPage() {
             return slot
           })
           
-          setOccupiedSlots(normalizedSlots)
+          setOccupiedSlots(normalizedOccupied)
+          
+          // Prepara gli availableSlots per il TimeSlotPicker
+          // L'API restituisce availableSlots già filtrati per orari di apertura e occupati
+          // Quindi tutti gli slot in availableSlots sono disponibili
+          if (Array.isArray(data.availableSlots)) {
+            // Crea un Set degli slot occupati per lookup veloce
+            const occupiedSet = new Set(normalizedOccupied)
+            
+            // Crea array di TimeSlot: gli slot dall'API sono disponibili, ma controlliamo anche occupiedSlots
+            const slotsForPicker = data.availableSlots.map((slot: string) => {
+              const normalizedSlot = typeof slot === 'string' 
+                ? slot.split(':').slice(0, 2).join(':')
+                : slot
+              return {
+                time: normalizedSlot,
+                // Se è in availableSlots dall'API, è disponibile (a meno che non sia anche in occupiedSlots)
+                available: !occupiedSet.has(normalizedSlot),
+              }
+            })
+            
+            setAvailableSlots(slotsForPicker)
+          } else {
+            // Se non ci sono slot disponibili (giorno chiuso o nessun slot), mostra array vuoto
+            setAvailableSlots([])
+          }
+          
+          // Salva gli orari di apertura/chiusura
+          if (data.openingHours === null) {
+            setOpeningHours(null) // Giorno chiuso
+          } else if (data.openingHours) {
+            setOpeningHours({
+              openTime: data.openingHours.openTime,
+              closeTime: data.openingHours.closeTime,
+            })
+          } else {
+            setOpeningHours(undefined) // Non disponibile
+          }
+          
+          // Salva se c'è un blackout che copre tutto il giorno
+          setHasFullDayBlackout(data.hasFullDayBlackout === true)
         })
         .catch(err => {
           console.error('[BookPage] Errore nel caricamento disponibilità:', err)
           setOccupiedSlots([])
+          setAvailableSlots([])
+          setOpeningHours(undefined)
+          setHasFullDayBlackout(false)
         })
         .finally(() => {
           setSlotsLoading(false)
         })
     } else {
       setOccupiedSlots([])
+      setAvailableSlots([])
+      setOpeningHours(undefined)
+      setHasFullDayBlackout(false)
       setValue("time", "")
       setSlotsLoading(false)
     }
@@ -432,12 +495,61 @@ export default function BookPage() {
                     <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
                     <span className="ml-2 text-gray-600">Caricamento orari disponibili...</span>
                   </div>
+                ) : hasFullDayBlackout ? (
+                  <div className="flex items-center justify-center py-12">
+                    <p className="text-2xl font-semibold text-teal-600">Buone feste! 🎉</p>
+                  </div>
                 ) : (
-                  <TimeSlotPicker
-                    selectedTime={selectedTime}
-                    onTimeSelect={(time) => setValue("time", time)}
-                    occupiedSlots={occupiedSlots}
-                  />
+                  <>
+                    <TimeSlotPicker
+                      selectedTime={selectedTime}
+                      onTimeSelect={(time) => setValue("time", time)}
+                      availableSlots={availableSlots.length > 0 ? availableSlots : undefined}
+                      occupiedSlots={occupiedSlots}
+                    />
+                    {/* Mostra gli orari di apertura/chiusura */}
+                    {openingHours === null ? (
+                    <div className="mt-3 text-center space-y-2">
+                      <p className="text-sm text-muted-foreground">
+                        ⚠️ Il Performance Center il {selectedDate ? getDayNameInItalian(selectedDate) : ""} è chiuso
+                      </p>
+                      <div className="pt-2">
+                        <p className="text-sm text-muted-foreground mb-2">
+                          Interessato ad una sessione privata fuori orario? Contattaci qui:
+                        </p>
+                        <a
+                          href="https://wa.me/393457992834?text=Ciao%2C%20vorrei%20maggiori%20informazioni%20per%20una%20sessione%20privata%20fuori%20orario"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm hover:shadow-md"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                          Contattaci su WhatsApp
+                        </a>
+                      </div>
+                    </div>
+                  ) : openingHours ? (
+                    <div className="mt-3 text-center space-y-2">
+                      <p className="text-sm text-muted-foreground">
+                        Il Performance Center il {selectedDate ? getDayNameInItalian(selectedDate) : ""} chiude alle {openingHours.closeTime}
+                      </p>
+                      <div className="pt-2">
+                        <p className="text-sm text-muted-foreground mb-2">
+                          Interessato ad una sessione privata fuori orario? Contattaci qui:
+                        </p>
+                        <a
+                          href="https://wa.me/393457992834?text=Ciao%2C%20vorrei%20maggiori%20informazioni%20per%20una%20sessione%20privata%20fuori%20orario"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm hover:shadow-md"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                          Contattaci su WhatsApp
+                        </a>
+                      </div>
+                    </div>
+                  ) : null}
+                  </>
                 )}
                 {errors.time && (
                   <p className="text-sm text-red-500">{errors.time.message}</p>
@@ -468,7 +580,7 @@ export default function BookPage() {
                 Tipo attività <span className="text-red-500">*</span>
               </Label>
               <Select
-                value={watch("holes")}
+                value={watch("holes") || ""}
                 onValueChange={(value) =>
                   setValue("holes", value as "9" | "18" | "pratica" | "mini-giochi" | "lezione-maestro")
                 }
@@ -496,7 +608,7 @@ export default function BookPage() {
                 Durata <span className="text-red-500">*</span>
               </Label>
               <Select
-                value={selectedDuration}
+                value={selectedDuration || ""}
                 onValueChange={(value) =>
                   setValue(
                     "duration",
@@ -637,7 +749,10 @@ export default function BookPage() {
                   <Label htmlFor="userType">
                     Tipo utente <span className="text-red-500">*</span>
                   </Label>
-                  <Select onValueChange={(value) => setValue("userType", value as "socio" | "esterno")}>
+                  <Select 
+                    value={watch("userType") || ""}
+                    onValueChange={(value) => setValue("userType", value as "socio" | "esterno")}
+                  >
                     <SelectTrigger id="userType">
                       <SelectValue placeholder="Seleziona tipo utente" />
                     </SelectTrigger>

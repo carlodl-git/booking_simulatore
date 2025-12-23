@@ -18,12 +18,17 @@ export function middleware(request: NextRequest) {
   if (allowedAdminHosts.includes(host)) {
     const pathname = request.nextUrl.pathname
     
+    // Se NON è una route admin, lascia passare normalmente (route pubbliche)
+    if (!pathname.startsWith('/admin') && !pathname.startsWith('/api/admin/')) {
+      return NextResponse.next()
+    }
+    
     // Permetti l'accesso alla pagina di login e alle API di login/logout
     if (pathname === '/admin/login' || pathname === '/api/admin/login' || pathname === '/api/admin/logout') {
       return NextResponse.next()
     }
     
-    // Verifica autenticazione per tutte le route admin (pagine E API)
+    // Verifica autenticazione SOLO per le route admin (pagine E API)
     const authCookie = request.cookies.get('admin-auth')
     const isAuthenticated = authCookie && authCookie.value === 'authenticated'
     
@@ -35,18 +40,12 @@ export function middleware(request: NextRequest) {
           { status: 401 }
         )
       }
-      // Per le pagine, reindirizza al login
+      // Per le pagine admin, reindirizza al login
       const loginUrl = new URL('/admin/login', request.url)
       return NextResponse.redirect(loginUrl)
     }
     
-    // Autenticato: permette l'accesso a route admin e API bookings
-    // Se non è una route admin o API bookings, reindirizza a /admin/bookings
-    if (!pathname.startsWith('/admin') && 
-        !pathname.startsWith('/api/admin') && 
-        !pathname.startsWith('/api/bookings')) {
-      return NextResponse.rewrite(new URL('/admin/bookings', request.url))
-    }
+    // Autenticato: permette l'accesso alle route admin
   }
   
   // Per booking.montecchiaperformancecenter.it, lascia passare tutto normalmente

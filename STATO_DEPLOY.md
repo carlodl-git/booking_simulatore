@@ -1,29 +1,28 @@
 # Stato Deploy - Montecchia Booking
 
 **Data**: 2025-01-15  
-**Ultimo Commit**: `d4c7906` - Docs: aggiunte istruzioni deploy Vercel
+**Ultimo Commit**: `393d121` - Force redeploy: fix customer name display on admin bookings
 
 ## ✅ Push Completato
 
 Tutte le modifiche sono state pushatte su GitHub:
 - Repository: `https://github.com/carlodl-git/booking_simulatore.git`
 - Branch: `main`
-- Commit totali da pushare: 22+ commit
+- Progetto Vercel: `booking_simulatore`
 
 ## 🚀 Deploy Vercel
 
-### Deploy Automatico
+### ⚠️ Deploy Automatico NON Attivo
 
-Se Vercel è configurato con **Auto-Deploy** da GitHub:
-- ✅ Il deploy dovrebbe essere **automatico** dopo il push
-- ⏱️ Tempo stimato: 2-5 minuti
-- 🔗 Verifica su: [Vercel Dashboard](https://vercel.com/dashboard)
+Il deploy automatico da GitHub non è partito. **Devi fare un redeploy manuale**.
+
+Vedi `REDEPLOY_MANUALE_VERCEL.md` per le istruzioni dettagliate.
 
 ### Verifica Deploy
 
 1. **Vai su Vercel Dashboard**
    - URL: https://vercel.com/dashboard
-   - Seleziona il progetto `montecchia-booking` (o il nome del progetto)
+   - Seleziona il progetto **`booking_simulatore`**
 
 2. **Controlla Deployments**
    - Dovresti vedere un nuovo deployment in corso o completato
@@ -42,19 +41,20 @@ Se Vercel è configurato con **Auto-Deploy** da GitHub:
 2. Aggiungi tutte le variabili obbligatorie (vedi `DEPLOY_VERCEL.md`)
 3. Assicurati di selezionare **Production** come ambiente
 
-### 🔧 Deploy Manuale (se necessario)
+### 🔧 Deploy Manuale (NECESSARIO)
 
-Se il deploy automatico non funziona, puoi fare deploy manuale:
+**Il deploy automatico non funziona. Devi fare un redeploy manuale.**
 
-```bash
-# Login a Vercel (se non già fatto)
-vercel login
+Vedi `REDEPLOY_MANUALE_VERCEL.md` per le istruzioni complete.
 
-# Deploy in produzione
-vercel --prod
-```
-
-Oppure usa il pulsante "Redeploy" nel Vercel Dashboard.
+**Passaggi rapidi:**
+1. Vai su [Vercel Dashboard](https://vercel.com/dashboard)
+2. Seleziona il progetto **`booking_simulatore`**
+3. Vai su **Deployments**
+4. Clicca sui **"..."** dell'ultimo deployment
+5. Seleziona **"Redeploy"**
+6. **Deseleziona** "Use existing Build Cache"
+7. Clicca **"Redeploy"**
 
 ## 📊 Checklist Post-Deploy
 
@@ -90,4 +90,5 @@ Dopo che il deploy è completato:
 - Il deploy automatico da GitHub è la modalità consigliata
 - Le variabili d'ambiente devono essere configurate PRIMA del deploy in produzione
 - Se modifichi le variabili d'ambiente, devi riavviare il deployment
+
 

@@ -90,3 +90,6 @@ Dopo il deploy, verifica:
 - [ ] Export CSV funzionante
 - [ ] Logs verificati (nessun errore critico)
 
+
+
+

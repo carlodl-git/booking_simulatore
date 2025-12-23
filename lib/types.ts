@@ -66,6 +66,11 @@ export interface AvailabilityResponse {
   availableSlots: string[] // Array of HH:mm strings (considerando durationMinutes richiesto)
   occupiedSlots: string[] // Array di slot occupati (considerando durationMinutes richiesto)
   allOccupiedSlots: string[] // Array di tutti gli slot occupati (indipendentemente dalla durata)
+  openingHours?: {
+    openTime: string // HH:mm format
+    closeTime: string // HH:mm format
+  } | null // null se il giorno è chiuso, undefined se non disponibile
+  hasFullDayBlackout?: boolean // true se c'è un blackout che copre tutto il giorno
 }
 
 export interface CreateBookingRequest {
@@ -124,5 +129,16 @@ export interface MaestroSummary {
   pendingAmount: number
   lessonsCount: number
   paidLessonsCount: number
+}
+
+export interface WeeklyHours {
+  id: string
+  resourceId: string
+  dayOfWeek: number // 0 = domenica, 1 = lunedì, ..., 6 = sabato
+  openTime: string // HH:mm format
+  closeTime: string // HH:mm format
+  isClosed: boolean
+  createdAt: string
+  updatedAt: string
 }
 

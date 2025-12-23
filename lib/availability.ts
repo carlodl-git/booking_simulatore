@@ -1,16 +1,17 @@
 import { Booking, BlackoutPeriod } from "./types"
 import { DateTime } from "luxon"
 
-// Orari di apertura del simulatore (Europe/Rome timezone)
-export const OPENING_TIME = "09:30"
-export const CLOSING_TIME = "23:00"
+// Orari di apertura di default del simulatore (Europe/Rome timezone)
+// Questi vengono usati come fallback se gli orari settimanali non sono configurati
+export const DEFAULT_OPENING_TIME = "09:30"
+export const DEFAULT_CLOSING_TIME = "23:00"
 export const BUFFER_MINUTES = 10 // Buffer tra prenotazioni
 export const TIMEZONE = "Europe/Rome"
 
 // Genera tutti gli slot disponibili in un giorno (ogni 30 minuti)
 export function generateTimeSlots(
-  startTime: string = OPENING_TIME,
-  endTime: string = CLOSING_TIME
+  startTime: string = DEFAULT_OPENING_TIME,
+  endTime: string = DEFAULT_CLOSING_TIME
 ): string[] {
   const slots: string[] = []
   const [startHour, startMinute] = startTime.split(":").map(Number)
@@ -172,13 +173,20 @@ export function isSlotInBlackout(
 
 // Calcola tutti gli slot occupati per una data (indipendentemente dalla durata richiesta)
 // Include sia bookings che blackout
+// openTime e closeTime sono opzionali: se non specificati, usa i default
 export function calculateAllOccupiedSlots(
   date: string,
   bookings: Booking[],
   resourceId: string = "trackman-io",
-  blackouts: BlackoutPeriod[] = []
+  blackouts: BlackoutPeriod[] = [],
+  openTime?: string, // HH:mm format, opzionale
+  closeTime?: string // HH:mm format, opzionale
 ): string[] {
   const occupiedSlots: string[] = []
+  
+  // Usa orari specificati o default
+  const startTime = openTime || DEFAULT_OPENING_TIME
+  const endTime = closeTime || DEFAULT_CLOSING_TIME
   
   // Aggiungi slot occupati dai bookings
   bookings.forEach((booking) => {
@@ -211,8 +219,8 @@ export function calculateAllOccupiedSlots(
       occupiedSlots.push(...slots)
     } else {
       // Se non ha orari specifici, tutto il giorno è in blackout
-      // Genera tutti gli slot del giorno
-      const allDaySlots = generateTimeSlots()
+      // Genera tutti gli slot del giorno usando gli orari di apertura
+      const allDaySlots = generateTimeSlots(startTime, endTime)
       occupiedSlots.push(...allDaySlots)
     }
   })
@@ -222,12 +230,15 @@ export function calculateAllOccupiedSlots(
 }
 
 // Calcola gli slot disponibili per una data (usa Europe/Rome timezone)
+// openTime e closeTime sono opzionali: se non specificati, usa i default
 export function calculateAvailableSlots(
   date: string,
   durationMinutes: number,
   bookings: Booking[],
   blackouts: BlackoutPeriod[],
-  resourceId: string = "trackman-io"
+  resourceId: string = "trackman-io",
+  openTime?: string, // HH:mm format, opzionale
+  closeTime?: string // HH:mm format, opzionale
 ): {
   availableSlots: string[]
   occupiedSlots: string[]
@@ -236,7 +247,11 @@ export function calculateAvailableSlots(
   const dateObj = DateTime.fromISO(date, { zone: TIMEZONE })
   const dateISO = dateObj.toISODate() // YYYY-MM-DD format
   
-  const allSlots = generateTimeSlots()
+  // Usa orari specificati o default
+  const startTime = openTime || DEFAULT_OPENING_TIME
+  const endTime = closeTime || DEFAULT_CLOSING_TIME
+  
+  const allSlots = generateTimeSlots(startTime, endTime)
   const availableSlots: string[] = []
   const occupiedSlots: string[] = []
 
@@ -244,7 +259,7 @@ export function calculateAvailableSlots(
     const slotEndTime = calculateEndTime(slot, durationMinutes)
 
     // Verifica se lo slot va oltre l'orario di chiusura
-    if (slotEndTime > CLOSING_TIME) {
+    if (slotEndTime > endTime) {
       continue
     }
 

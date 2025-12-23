@@ -122,3 +122,6 @@ Prima di deploy in produzione, verificare:
 - Miglioramenti di sicurezza e performance senza impatto UX
 - Rate limiting può essere aggiunto in futuro senza modifiche al codice esistente
 
+
+
+

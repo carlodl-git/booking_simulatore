@@ -22,3 +22,6 @@ $$ LANGUAGE plpgsql;
 -- invece di caricare tutti i dati in memoria, riducendo drasticamente
 -- il consumo di risorse e migliorando le performance
 
+
+
+

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { upsertCustomer, createBookingTx } from "@/lib/repo"
+import { upsertCustomer, createBookingTx, getOpeningHoursForDate } from "@/lib/repo"
 import { calculateEndTime } from "@/lib/availability"
 import { CreateBookingRequest, CreateBookingResponse, BookingError } from "@/lib/types"
 import { DateTime } from "luxon"
@@ -90,28 +90,76 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    // Supporta sia formato date+startTime che startsAt
-    let startsAt: string
-    let endsAt: string
-
+    // Estrai la data e l'orario dalla prenotazione per validare gli orari di apertura
+    let bookingDate: string
+    let startTimeStr: string
+    
     if (body.startsAt) {
       // Formato nuovo: startsAt come timestamp ISO
-      // Parser il timestamp e mantieni l'offset originale, poi converti in UTC per il DB
       const startsAtDateTime = DateTime.fromISO(body.startsAt, { zone: TIMEZONE })
-      // Salva come UTC nel database
-      startsAt = startsAtDateTime.toUTC().toISO()!
-      const endsAtDateTime = startsAtDateTime.plus({ minutes: body.durationMinutes })
-      endsAt = endsAtDateTime.toUTC().toISO()!
+      bookingDate = startsAtDateTime.toISODate()!
+      startTimeStr = startsAtDateTime.toFormat('HH:mm')
     } else if (body.date && body.startTime) {
       // Formato legacy: date + startTime
-      startsAt = combineDateAndTime(body.date, body.startTime)
-      const endTime = calculateEndTime(body.startTime, body.durationMinutes)
-      endsAt = combineDateAndTime(body.date, endTime)
+      bookingDate = body.date
+      startTimeStr = body.startTime
     } else {
       return NextResponse.json(
         { error: "Dati prenotazione incompleti: fornisci 'startsAt' (timestamp ISO) oppure 'date' + 'startTime'", code: "INVALID_INPUT" } as BookingError,
         { status: 400 }
       )
+    }
+
+    // Validazione orari di apertura (tranne per lezione-maestro)
+    if (body.activityType !== 'lezione-maestro') {
+      const openingHours = await getOpeningHoursForDate(bookingDate, resourceId)
+      
+      if (!openingHours) {
+        return NextResponse.json(
+          { error: "Il simulatore è chiuso in questa data", code: "CLOSED" } as BookingError,
+          { status: 400 }
+        )
+      }
+
+      // Calcola l'orario di fine
+      const endTimeStr = calculateEndTime(startTimeStr, body.durationMinutes)
+
+      // Confronta in minuti per validare
+      const [startHours, startMinutes] = startTimeStr.split(":").map(Number)
+      const [endHours, endMinutes] = endTimeStr.split(":").map(Number)
+      const [openHours, openMinutes] = openingHours.openTime.split(":").map(Number)
+      const [closeHours, closeMinutes] = openingHours.closeTime.split(":").map(Number)
+
+      const startTotalMinutes = startHours * 60 + startMinutes
+      const endTotalMinutes = endHours * 60 + endMinutes
+      const openTotalMinutes = openHours * 60 + openMinutes
+      const closeTotalMinutes = closeHours * 60 + closeMinutes
+
+      // Verifica che la prenotazione sia completamente dentro gli orari di apertura
+      if (startTotalMinutes < openTotalMinutes || endTotalMinutes > closeTotalMinutes) {
+        return NextResponse.json(
+          { error: `La prenotazione deve essere effettuata tra le ${openingHours.openTime} e le ${openingHours.closeTime}`, code: "OUTSIDE_OPENING_HOURS" } as BookingError,
+          { status: 400 }
+        )
+      }
+    }
+
+    // Calcola startsAt e endsAt per il database
+    let startsAt: string
+    let endsAt: string
+
+    if (body.startsAt) {
+      // Formato nuovo: startsAt come timestamp ISO
+      const startsAtDateTime = DateTime.fromISO(body.startsAt, { zone: TIMEZONE })
+      // Salva come UTC nel database
+      startsAt = startsAtDateTime.toUTC().toISO()!
+      const endsAtDateTime = startsAtDateTime.plus({ minutes: body.durationMinutes })
+      endsAt = endsAtDateTime.toUTC().toISO()!
+    } else {
+      // Formato legacy: date + startTime
+      startsAt = combineDateAndTime(body.date!, body.startTime!)
+      const endTime = calculateEndTime(body.startTime!, body.durationMinutes)
+      endsAt = combineDateAndTime(body.date!, endTime)
     }
 
     // Upsert customer

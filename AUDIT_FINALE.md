@@ -162,3 +162,6 @@ Prima di deploy in produzione, verificare:
 - [ ] Error handling standardizzato
 - [ ] Test di sicurezza eseguiti
 
+
+
+

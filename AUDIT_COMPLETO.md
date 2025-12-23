@@ -128,3 +128,6 @@
 - **Filtering**: Più efficiente (useMemo, Set lookup)
 - **Bundle Size**: Potenziale riduzione 5-10% (rimozione date-fns se non necessaria)
 
+
+
+

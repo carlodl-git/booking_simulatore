@@ -11,3 +11,5 @@ CREATE INDEX IF NOT EXISTS idx_maestro_payments_not_due ON maestro_payments(not_
 -- Commento per documentazione
 COMMENT ON COLUMN maestro_payments.not_due IS 'Se true, il pagamento non è dovuto e non viene incluso nei calcoli di totale dovuto e totale incassato';
 
+
+

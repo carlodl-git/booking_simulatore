@@ -230,3 +230,6 @@ Creare `lib/env-check.ts` e chiamarlo in `app/layout.tsx` o `middleware.ts`
 - **Documentazione**: Documentare le variabili d'ambiente necessarie per il team
 - **Monitoring**: Configurare alerting per errori critici
 
+
+
+
