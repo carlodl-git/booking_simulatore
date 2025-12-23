@@ -18,9 +18,35 @@ export function middleware(request: NextRequest) {
   if (allowedAdminHosts.includes(host)) {
     const pathname = request.nextUrl.pathname
     
-    // Se NON è una route admin, lascia passare normalmente (route pubbliche)
+    // Se è la root (/) del dominio admin, reindirizza alla pagina admin principale
+    if (pathname === '/') {
+      const authCookie = request.cookies.get('admin-auth')
+      const isAuthenticated = authCookie && authCookie.value === 'authenticated'
+      
+      if (isAuthenticated) {
+        // Se autenticato, vai alla pagina admin principale
+        const adminUrl = new URL('/admin/bookings', request.url)
+        return NextResponse.redirect(adminUrl)
+      } else {
+        // Se non autenticato, vai al login
+        const loginUrl = new URL('/admin/login', request.url)
+        return NextResponse.redirect(loginUrl)
+      }
+    }
+    
+    // Se NON è una route admin, reindirizza alla pagina admin principale
+    // (le route pubbliche non sono accessibili dal dominio admin)
     if (!pathname.startsWith('/admin') && !pathname.startsWith('/api/admin/')) {
-      return NextResponse.next()
+      const authCookie = request.cookies.get('admin-auth')
+      const isAuthenticated = authCookie && authCookie.value === 'authenticated'
+      
+      if (isAuthenticated) {
+        const adminUrl = new URL('/admin/bookings', request.url)
+        return NextResponse.redirect(adminUrl)
+      } else {
+        const loginUrl = new URL('/admin/login', request.url)
+        return NextResponse.redirect(loginUrl)
+      }
     }
     
     // Permetti l'accesso alla pagina di login e alle API di login/logout
