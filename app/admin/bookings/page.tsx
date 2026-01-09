@@ -225,7 +225,7 @@ export default function AdminBookingsPage() {
     if (!selectedBooking) return
     
     try {
-      const response = await fetch(`/api/bookings/${selectedBooking.id}`, {
+      const response = await fetch(`/api/admin/bookings/${selectedBooking.id}`, {
         method: "PATCH",
         credentials: 'include',
         headers: { "Content-Type": "application/json" },
@@ -236,7 +236,8 @@ export default function AdminBookingsPage() {
         setIsModalOpen(false)
         fetchBookings()
       } else {
-        alert("Errore durante la cancellazione della prenotazione")
+        const errorData = await response.json().catch(() => ({ error: "Errore sconosciuto" }))
+        alert(`Errore durante la cancellazione della prenotazione: ${errorData.error || "Errore sconosciuto"}`)
       }
     } catch (error) {
       console.error("Error cancelling booking:", error)
