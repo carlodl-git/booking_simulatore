@@ -19,6 +19,87 @@ const debugLog = (...args: unknown[]) => {
 }
 
 /**
+ * Aggiunge un timeout a una Promise
+ * @param promise La Promise da eseguire
+ * @param timeoutMs Timeout in millisecondi (default: 10000 = 10 secondi)
+ */
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number = 10000
+): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout dopo ${timeoutMs}ms`)), timeoutMs)
+    ),
+  ])
+}
+
+/**
+ * Invia email con retry automatico in caso di errori temporanei
+ * @param sendFn Funzione che invia l'email
+ * @param maxRetries Numero massimo di tentativi (default: 3)
+ * @param initialDelay Delay iniziale in ms (default: 1000)
+ * @param timeoutMs Timeout per ogni tentativo in ms (default: 10000)
+ */
+async function sendEmailWithRetry<T>(
+  sendFn: () => Promise<T>,
+  maxRetries: number = 3,
+  initialDelay: number = 1000,
+  timeoutMs: number = 10000
+): Promise<T> {
+  let lastError: unknown
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Aggiungi timeout alla richiesta
+      const result = await withTimeout(sendFn(), timeoutMs)
+      if (attempt > 1) {
+        console.log(`✅ Email inviata con successo al tentativo ${attempt}`)
+      }
+      return result
+    } catch (error: unknown) {
+      lastError = error
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      
+      // Se è l'ultimo tentativo, logga e rilancia l'errore
+      if (attempt === maxRetries) {
+        console.error(`❌ Errore invio email dopo ${maxRetries} tentativi:`, {
+          error: errorMessage,
+          attempts: maxRetries,
+        })
+        throw error
+      }
+      
+      // Calcola delay con exponential backoff
+      const delay = initialDelay * Math.pow(2, attempt - 1)
+      
+      // Non fare retry per errori di validazione (4xx) - sono errori permanenti
+      if (error && typeof error === 'object' && 'status' in error) {
+        const status = (error as { status?: number }).status
+        if (status && status >= 400 && status < 500) {
+          console.error(`❌ Errore di validazione (${status}), non faccio retry:`, errorMessage)
+          throw error
+        }
+      }
+      
+      // Non fare retry per timeout - potrebbe essere un problema di rete persistente
+      if (errorMessage.includes('Timeout')) {
+        console.warn(`⚠️ Timeout al tentativo ${attempt}, continuo con retry...`)
+      } else {
+        console.warn(`⚠️ Tentativo ${attempt}/${maxRetries} fallito, retry tra ${delay}ms:`, errorMessage)
+      }
+      
+      // Attendi prima del prossimo tentativo
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
+  }
+  
+  // Non dovrebbe mai arrivare qui, ma TypeScript richiede un return
+  throw lastError
+}
+
+/**
  * Converte date e time in un timestamp ISO usando Europe/Rome timezone
  * date: YYYY-MM-DD, time: HH:mm
  */
@@ -196,6 +277,13 @@ export async function POST(request: NextRequest) {
     // Solo se Resend è configurato
     if (resend) {
       try {
+        // Log sempre per debug (anche in produzione)
+        console.log('📧 Tentativo invio email - Resend configurato:', {
+          hasApiKey: !!process.env.RESEND_API_KEY,
+          apiKeyLength: process.env.RESEND_API_KEY?.length || 0,
+          nodeEnv: process.env.NODE_ENV,
+        })
+
         const durationHours = Math.floor(booking.durationMinutes / 60)
         const durationMinutes = booking.durationMinutes % 60
         const durationString = durationMinutes > 0 
@@ -209,17 +297,17 @@ export async function POST(request: NextRequest) {
         
         // SICUREZZA: Se contiene onboarding@resend.dev, forza SEMPRE il dominio verificato
         if (fromEmail.includes('onboarding@resend.dev') || fromEmail.includes('resend.dev')) {
-          debugLog('⚠️ ATTENZIONE: Trovato dominio resend.dev, forzo uso dominio verificato')
+          console.log('⚠️ ATTENZIONE: Trovato dominio resend.dev, forzo uso dominio verificato')
           fromEmail = verifiedDomainEmail
         }
         
         // Assicurati che usi sempre il dominio verificato
         if (!fromEmail.includes('montecchiaperformancecenter.it')) {
-          debugLog('⚠️ ATTENZIONE: From email non usa dominio verificato, forzo correzione')
+          console.log('⚠️ ATTENZIONE: From email non usa dominio verificato, forzo correzione')
           fromEmail = verifiedDomainEmail
         }
         
-        debugLog('🔍 DEBUG EMAIL CONFIG:', {
+        console.log('🔍 Configurazione email:', {
           fromEmail,
           customerEmail: customer.email,
         })
@@ -237,64 +325,102 @@ export async function POST(request: NextRequest) {
         console.log('🔍 URL di cancellazione generato:', {
           cancelUrl,
           bookingId: booking.id,
-          nodeEnv: process.env.NODE_ENV,
         })
 
-        // Email al cliente
-        resend.emails.send({
-          from: fromEmail,
-          to: [customer.email],
-          subject: '✓ Conferma Prenotazione TrackMan iO - Montecchia Performance Center',
-          html: BookingConfirmationEmail({
-            firstName: customer.firstName,
-            lastName: customer.lastName,
-            bookingId: booking.id,
-            date: booking.date,
-            startTime: booking.startTime,
-            endTime: booking.endTime,
-            duration: durationString,
-            players: booking.players,
-            activityType: booking.activityType,
-            userType: customer.userType,
-            cancelToken,
-            cancelUrl,
-          }),
-        }).catch(emailError => {
-          // Log solo errori critici in produzione
-          console.error('❌ Errore invio email cliente:', emailError)
-        })
+        // Email al cliente con retry automatico
+        try {
+          const emailResult = await sendEmailWithRetry(
+            () => resend.emails.send({
+              from: fromEmail,
+              to: [customer.email],
+              subject: '✓ Conferma Prenotazione TrackMan iO - Montecchia Performance Center',
+              html: BookingConfirmationEmail({
+                firstName: customer.firstName,
+                lastName: customer.lastName,
+                bookingId: booking.id,
+                date: booking.date,
+                startTime: booking.startTime,
+                endTime: booking.endTime,
+                duration: durationString,
+                players: booking.players,
+                activityType: booking.activityType,
+                userType: customer.userType,
+                cancelToken,
+                cancelUrl,
+              }),
+            }),
+            3, // 3 tentativi
+            1000 // 1 secondo di delay iniziale
+          )
+          console.log('✅ Email cliente inviata con successo:', {
+            emailId: emailResult.data?.id,
+            to: customer.email,
+          })
+        } catch (emailError: unknown) {
+          // Log dettagliato dell'errore (dopo tutti i retry)
+          console.error('❌ Errore invio email cliente (dopo retry):', {
+            error: emailError,
+            message: emailError instanceof Error ? emailError.message : String(emailError),
+            stack: emailError instanceof Error ? emailError.stack : undefined,
+            customerEmail: customer.email,
+            fromEmail,
+          })
+        }
 
         const adminEmail = process.env.ADMIN_EMAIL || 'info@montecchiaperformancecenter.it'
-        // Email all'admin
-        resend.emails.send({
-          from: fromEmail,
-          to: [adminEmail],
-          subject: '📅 Nuova Prenotazione TrackMan iO',
-          html: AdminNotificationEmail({
-            firstName: customer.firstName,
-            lastName: customer.lastName,
-            bookingId: booking.id,
-            date: booking.date,
-            startTime: booking.startTime,
-            endTime: booking.endTime,
-            duration: durationString,
-            players: booking.players,
-            activityType: booking.activityType,
-            userType: customer.userType,
-            email: customer.email,
-            phone: customer.phone,
-          }),
-        }).catch(emailError => {
-          // Log solo errori critici in produzione
-          console.error('❌ Errore invio email admin:', emailError)
-        })
-      } catch (emailError) {
-        // Log l'errore ma non bloccare la risposta
-        console.error('❌ Errore nella configurazione email:', emailError)
-        if (emailError instanceof Error) {
-          console.error('Stack trace:', emailError.stack)
+        // Email all'admin con retry automatico
+        try {
+          const adminEmailResult = await sendEmailWithRetry(
+            () => resend.emails.send({
+              from: fromEmail,
+              to: [adminEmail],
+              subject: '📅 Nuova Prenotazione TrackMan iO',
+              html: AdminNotificationEmail({
+                firstName: customer.firstName,
+                lastName: customer.lastName,
+                bookingId: booking.id,
+                date: booking.date,
+                startTime: booking.startTime,
+                endTime: booking.endTime,
+                duration: durationString,
+                players: booking.players,
+                activityType: booking.activityType,
+                userType: customer.userType,
+                email: customer.email,
+                phone: customer.phone,
+              }),
+            }),
+            3, // 3 tentativi
+            1000 // 1 secondo di delay iniziale
+          )
+          console.log('✅ Email admin inviata con successo:', {
+            emailId: adminEmailResult.data?.id,
+            to: adminEmail,
+          })
+        } catch (emailError: unknown) {
+          // Log dettagliato dell'errore (dopo tutti i retry)
+          console.error('❌ Errore invio email admin (dopo retry):', {
+            error: emailError,
+            message: emailError instanceof Error ? emailError.message : String(emailError),
+            stack: emailError instanceof Error ? emailError.stack : undefined,
+            adminEmail,
+            fromEmail,
+          })
         }
+      } catch (emailError: unknown) {
+        // Log l'errore ma non bloccare la risposta
+        console.error('❌ Errore nella configurazione email:', {
+          error: emailError,
+          message: emailError instanceof Error ? emailError.message : String(emailError),
+          stack: emailError instanceof Error ? emailError.stack : undefined,
+        })
       }
+    } else {
+      // Log se Resend non è configurato
+      console.warn('⚠️ Resend non configurato - email non inviate:', {
+        hasApiKey: !!process.env.RESEND_API_KEY,
+        nodeEnv: process.env.NODE_ENV,
+      })
     }
 
     return NextResponse.json(response, { status: 201 })
