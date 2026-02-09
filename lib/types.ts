@@ -66,6 +66,11 @@ export interface AvailabilityResponse {
   availableSlots: string[] // Array of HH:mm strings (considerando durationMinutes richiesto)
   occupiedSlots: string[] // Array di slot occupati (considerando durationMinutes richiesto)
   allOccupiedSlots: string[] // Array di tutti gli slot occupati (indipendentemente dalla durata)
+  openingHours?: {
+    openTime: string
+    closeTime: string
+  }
+  hasFullDayBlackout?: boolean
 }
 
 export interface CreateBookingRequest {
