@@ -1,5 +1,5 @@
 import { supabaseAdmin } from './supabase'
-import { Booking, BookingWithCustomer, Customer, BlackoutPeriod, MaestroPayment, MaestroSummary } from './types'
+import { Booking, BookingWithCustomer, Customer, BlackoutPeriod, MaestroPayment, MaestroSummary, WeeklyHours } from './types'
 import { DateTime } from 'luxon'
 
 // Helper per logging solo in sviluppo
@@ -1226,4 +1226,195 @@ export async function getTotalRevenueFromPastBookings(): Promise<number> {
   }
 
   return (data as { total_revenue?: number })?.total_revenue || 0
+}
+
+// ==================== WEEKLY HOURS ====================
+
+type WeeklyHoursRow = {
+  id: string
+  resource_id: string
+  day_of_week: number
+  open_time: string // TIME format HH:mm:ss
+  close_time: string // TIME format HH:mm:ss
+  is_closed: boolean
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * Recupera tutti gli orari settimanali per una risorsa
+ */
+export async function getWeeklyHours(resourceId: string): Promise<WeeklyHours[]> {
+  const { data, error } = await supabaseAdmin
+    .from('weekly_hours')
+    .select('id, resource_id, day_of_week, open_time, close_time, is_closed, created_at, updated_at')
+    .eq('resource_id', resourceId)
+    .order('day_of_week', { ascending: true })
+
+  if (error) {
+    console.error('Errore nel recupero weekly hours:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+
+  const rows = (data ?? []) as WeeklyHoursRow[]
+  return rows.map(mapWeeklyHoursFromDB)
+}
+
+/**
+ * Recupera gli orari per un giorno specifico della settimana
+ */
+export async function getWeeklyHoursForDay(dayOfWeek: number, resourceId: string = 'trackman-io'): Promise<WeeklyHours | null> {
+  const { data, error } = await supabaseAdmin
+    .from('weekly_hours')
+    .select('id, resource_id, day_of_week, open_time, close_time, is_closed, created_at, updated_at')
+    .eq('resource_id', resourceId)
+    .eq('day_of_week', dayOfWeek)
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      // Not found
+      return null
+    }
+    console.error('Errore nel recupero weekly hours per giorno:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+
+  if (!data) {
+    return null
+  }
+
+  return mapWeeklyHoursFromDB(data as WeeklyHoursRow)
+}
+
+/**
+ * Recupera gli orari di apertura per una data specifica
+ */
+export async function getOpeningHoursForDate(dateISO: string, resourceId: string = 'trackman-io'): Promise<{ openTime: string; closeTime: string; isClosed: boolean } | null> {
+  const dateObj = DateTime.fromISO(dateISO, { zone: 'Europe/Rome' })
+  const dayOfWeek = dateObj.weekday === 7 ? 0 : dateObj.weekday // Converti Luxon weekday (1-7) a 0-6 (0=domenica)
+  
+  const weeklyHours = await getWeeklyHoursForDay(dayOfWeek, resourceId)
+  
+  if (!weeklyHours) {
+    return null
+  }
+
+  return {
+    openTime: weeklyHours.openTime,
+    closeTime: weeklyHours.closeTime,
+    isClosed: weeklyHours.isClosed,
+  }
+}
+
+/**
+ * Crea o aggiorna gli orari settimanali (upsert)
+ */
+export async function upsertWeeklyHours({
+  resourceId,
+  dayOfWeek,
+  openTime,
+  closeTime,
+  isClosed,
+}: {
+  resourceId: string
+  dayOfWeek: number
+  openTime: string // HH:mm
+  closeTime: string // HH:mm
+  isClosed: boolean
+}): Promise<WeeklyHours> {
+  // Converti HH:mm in HH:mm:ss per il database
+  const openTimeDB = openTime.includes(':') && openTime.split(':').length === 2 ? `${openTime}:00` : openTime
+  const closeTimeDB = closeTime.includes(':') && closeTime.split(':').length === 2 ? `${closeTime}:00` : closeTime
+
+  const { data, error } = await supabaseAdmin
+    .from('weekly_hours')
+    .upsert(
+      {
+        resource_id: resourceId,
+        day_of_week: dayOfWeek,
+        open_time: openTimeDB,
+        close_time: closeTimeDB,
+        is_closed: isClosed,
+        updated_at: new Date().toISOString(),
+      },
+      {
+        onConflict: 'resource_id,day_of_week',
+        ignoreDuplicates: false,
+      }
+    )
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Errore nell\'upsert weekly hours:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+
+  return mapWeeklyHoursFromDB(data as WeeklyHoursRow)
+}
+
+/**
+ * Aggiorna gli orari settimanali per ID
+ */
+export async function updateWeeklyHours(
+  id: string,
+  updates: {
+    openTime?: string
+    closeTime?: string
+    isClosed?: boolean
+  }
+): Promise<WeeklyHours> {
+  const updateData: Partial<WeeklyHoursRow> = {}
+  
+  if (updates.openTime !== undefined) {
+    updateData.open_time = updates.openTime.includes(':') && updates.openTime.split(':').length === 2 
+      ? `${updates.openTime}:00` 
+      : updates.openTime
+  }
+  if (updates.closeTime !== undefined) {
+    updateData.close_time = updates.closeTime.includes(':') && updates.closeTime.split(':').length === 2 
+      ? `${updates.closeTime}:00` 
+      : updates.closeTime
+  }
+  if (updates.isClosed !== undefined) {
+    updateData.is_closed = updates.isClosed
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('weekly_hours')
+    .update(updateData)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw new Error('Orari settimanali non trovati')
+    }
+    console.error('Errore nell\'aggiornamento weekly hours:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+
+  return mapWeeklyHoursFromDB(data as WeeklyHoursRow)
+}
+
+/**
+ * Helper: Mappa i dati dal database al tipo WeeklyHours
+ */
+function mapWeeklyHoursFromDB(row: WeeklyHoursRow): WeeklyHours {
+  // Converti HH:mm:ss in HH:mm
+  const openTime = row.open_time.substring(0, 5)
+  const closeTime = row.close_time.substring(0, 5)
+
+  return {
+    id: row.id,
+    resourceId: row.resource_id,
+    dayOfWeek: row.day_of_week,
+    openTime,
+    closeTime,
+    isClosed: row.is_closed,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
 }

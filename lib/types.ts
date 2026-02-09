@@ -126,3 +126,14 @@ export interface MaestroSummary {
   paidLessonsCount: number
 }
 
+export interface WeeklyHours {
+  id: string
+  resourceId: string
+  dayOfWeek: number // 0 = domenica, 6 = sabato
+  openTime: string // HH:mm format
+  closeTime: string // HH:mm format
+  isClosed: boolean
+  createdAt: string
+  updatedAt: string
+}
+
