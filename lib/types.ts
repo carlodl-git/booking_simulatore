@@ -34,6 +34,9 @@ export interface Booking {
   adminNotes?: string
   createdAt: string
   updatedAt: string
+  // Snapshot fields from booking (used when customer data might have changed)
+  customerFirstName?: string | null
+  customerLastName?: string | null
 }
 
 export interface BlackoutPeriod {
