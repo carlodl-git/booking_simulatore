@@ -954,6 +954,34 @@ export async function getMaestroPayments(maestroEmail: string): Promise<(Maestro
 }
 
 /**
+ * Recupera un pagamento maestro per booking_id
+ */
+export async function getMaestroPaymentByBookingId(bookingId: string): Promise<MaestroPayment | null> {
+  await syncMaestroPayments()
+
+  const { data, error } = await supabaseAdmin
+    .from('maestro_payments')
+    .select('id, booking_id, maestro_name, maestro_email, amount, paid, paid_at, not_due, created_at, updated_at')
+    .eq('booking_id', bookingId)
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      // Not found
+      return null
+    }
+    console.error('Errore nel recupero pagamento maestro:', error)
+    throw new Error(`Errore database: ${error.message}`)
+  }
+
+  if (!data) {
+    return null
+  }
+
+  return mapMaestroPaymentFromDB(data as MaestroPaymentRow)
+}
+
+/**
  * Segna un pagamento come saldato
  */
 export async function markMaestroPaymentAsPaid(paymentId: string): Promise<MaestroPayment> {
