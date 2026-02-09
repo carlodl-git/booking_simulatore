@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getAllBookings } from "@/lib/repo"
+import { Booking } from "@/lib/types"
 
 // Export CSV - sempre dinamico, non cacheabile
 export const revalidate = 0
@@ -41,8 +42,10 @@ export async function GET() {
       }
 
       // Usa campi snapshot dalla prenotazione invece del customer
-      const firstName = booking.customerFirstName || booking.customer?.firstName || ""
-      const lastName = booking.customerLastName || booking.customer?.lastName || ""
+      // Type assertion per accedere ai campi snapshot che potrebbero non essere nel tipo
+      const bookingWithSnapshot = booking as Booking & { customerFirstName?: string | null; customerLastName?: string | null }
+      const firstName = bookingWithSnapshot.customerFirstName || booking.customer?.firstName || ""
+      const lastName = bookingWithSnapshot.customerLastName || booking.customer?.lastName || ""
       const userType = booking.customer?.userType || "esterno"
       
       return [
