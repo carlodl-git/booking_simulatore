@@ -100,7 +100,7 @@ export interface BookingError {
   details?: unknown
 }
 
-export type BookingWithCustomer = Booking & {
+export interface BookingWithCustomer extends Booking {
   customer: Customer
 }
 
