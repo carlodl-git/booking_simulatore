@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -35,13 +35,11 @@ interface Booking {
   activityType: string
   players: number
   notes?: string
+  adminNotes?: string
   status: string
   createdAt: string
   updatedAt: string
   customer: Customer
-  // Campi snapshot dalla prenotazione (nome/cognome al momento della prenotazione)
-  customerFirstName: string | null
-  customerLastName: string | null
 }
 
 const formatDate = (dateStr: string) => {
@@ -61,6 +59,7 @@ const formatActivityType = (type: string) => {
 
 export default function HistoricalBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([])
+  const [filteredBookings, setFilteredBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -76,9 +75,14 @@ export default function HistoricalBookingsPage() {
   const fetchBookings = useCallback(async () => {
     try {
       setLoading(true)
-      // Lascia che la cache del server gestisca la validità dei dati
-      const response = await fetch(`/api/admin/bookings?includeRevenue=true`, {
+      // Add cache-busting to prevent stale data
+      const response = await fetch(`/api/admin/bookings?t=${Date.now()}&includeRevenue=true`, {
+        cache: 'no-store',
         credentials: 'include', // Include cookies in the request
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        }
       })
       
       if (!response.ok) {
@@ -95,12 +99,9 @@ export default function HistoricalBookingsPage() {
     }
   }, [])
 
-  // Memoizza "today" per evitare di calcolarlo ad ogni render
-  const today = useMemo(() => DateTime.now().setZone("Europe/Rome").startOf("day"), [])
-
-  // Ottimizza il filtering con useMemo invece di useCallback
-  const filteredBookings = useMemo(() => {
+  const applyFilters = useCallback(() => {
     // Filter for past bookings only
+    const today = DateTime.now().setZone("Europe/Rome").startOf("day")
     let filtered = bookings.filter(booking => {
       const bookingDate = DateTime.fromISO(booking.date).setZone("Europe/Rome").startOf("day")
       return bookingDate < today
@@ -111,15 +112,14 @@ export default function HistoricalBookingsPage() {
       filtered = filtered.filter(booking => booking.status !== "cancelled")
     }
 
-    // Search filter - cerca nei campi snapshot della prenotazione
+    // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(booking => {
-        const firstName = (booking.customerFirstName || '').toLowerCase()
-        const lastName = (booking.customerLastName || '').toLowerCase()
-        const email = (booking.customer?.email || '').toLowerCase()
-        return firstName.includes(query) || lastName.includes(query) || email.includes(query)
-      })
+      filtered = filtered.filter(booking => 
+        booking.customer?.firstName.toLowerCase().includes(query) ||
+        booking.customer?.lastName.toLowerCase().includes(query) ||
+        booking.customer?.email.toLowerCase().includes(query)
+      )
     }
 
     // Status filter (solo se showCancelled è true, altrimenti ignoriamo questo filtro per le cancellate)
@@ -139,16 +139,22 @@ export default function HistoricalBookingsPage() {
     }
 
     // Sort by date/time descending (most recent first)
-    return [...filtered].sort((a, b) => {
+    filtered.sort((a, b) => {
       const dateA = DateTime.fromISO(a.startsAt).setZone("Europe/Rome")
       const dateB = DateTime.fromISO(b.startsAt).setZone("Europe/Rome")
       return dateB.toMillis() - dateA.toMillis()
     })
-  }, [bookings, dateFilter, searchQuery, statusFilter, userTypeFilter, showCancelled, today])
+
+    setFilteredBookings(filtered)
+  }, [bookings, dateFilter, searchQuery, statusFilter, userTypeFilter, showCancelled])
 
   useEffect(() => {
     fetchBookings()
   }, [fetchBookings])
+
+  useEffect(() => {
+    applyFilters()
+  }, [applyFilters])
 
   const handleExportCSV = async () => {
     try {
@@ -391,7 +397,7 @@ export default function HistoricalBookingsPage() {
                         {booking.startTime} - {booking.endTime}
                       </TableCell>
                       <TableCell>
-                        {[booking.customerFirstName || '', booking.customerLastName || ''].filter(Boolean).join(' ') || 'N/A'}
+                        {booking.customer?.firstName} {booking.customer?.lastName}
                       </TableCell>
                       <TableCell className="text-sm text-gray-600">
                         {booking.customer?.email}
@@ -453,7 +459,7 @@ export default function HistoricalBookingsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium text-gray-500">Nome</label>
-                  <p className="text-lg">{[selectedBooking.customerFirstName || '', selectedBooking.customerLastName || ''].filter(Boolean).join(' ') || 'N/A'}</p>
+                  <p className="text-lg">{selectedBooking.customer?.firstName} {selectedBooking.customer?.lastName}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-500">Email</label>
@@ -514,6 +520,13 @@ export default function HistoricalBookingsPage() {
                 <div>
                   <label className="text-sm font-medium text-gray-500">Note</label>
                   <p className="text-lg">{selectedBooking.notes}</p>
+                </div>
+              )}
+
+              {selectedBooking.adminNotes && (
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Note Admin</label>
+                  <p className="text-lg">{selectedBooking.adminNotes}</p>
                 </div>
               )}
 

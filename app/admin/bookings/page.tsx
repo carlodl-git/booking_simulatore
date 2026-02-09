@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -8,8 +8,10 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import { DateTime } from "luxon"
-import { Calendar, X, Download, Search, Filter, List, Grid, RefreshCw, LogOut, Ban, Euro, Clock } from "lucide-react"
+import { Calendar, X, Download, Search, Filter, List, Grid, RefreshCw, LogOut, Ban, Euro } from "lucide-react"
 import { DatePicker } from "@/components/ui/date-picker"
 import { CalendarView } from "@/components/admin/CalendarView"
 import Link from "next/link"
@@ -36,13 +38,11 @@ interface Booking {
   activityType: string
   players: number
   notes?: string
+  adminNotes?: string
   status: string
   createdAt: string
   updatedAt: string
   customer: Customer
-  // Campi snapshot dalla prenotazione (nome/cognome al momento della prenotazione)
-  customerFirstName: string | null
-  customerLastName: string | null
 }
 
 const formatDate = (dateStr: string) => {
@@ -70,29 +70,17 @@ interface Blackout {
   reason?: string
 }
 
-interface MaestroPayment {
-  id: string
-  bookingId: string
-  maestroName: string
-  maestroEmail: string
-  amount: number
-  paid: boolean
-  paidAt?: string
-  notDue: boolean
-  createdAt: string
-  updatedAt: string
-}
-
 export default function AdminBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([])
+  const [filteredBookings, setFilteredBookings] = useState<Booking[]>([])
   const [blackouts, setBlackouts] = useState<Blackout[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [viewMode, setViewMode] = useState<"table" | "calendar">("table")
   const [totalMaestroOwed, setTotalMaestroOwed] = useState<number | null>(null) // null = loading
-  const [maestroPayment, setMaestroPayment] = useState<MaestroPayment | null>(null)
-  const [loadingPayment, setLoadingPayment] = useState(false)
+  const [adminNotes, setAdminNotes] = useState<string>("")
+  const [isSavingNotes, setIsSavingNotes] = useState(false)
   
   // Filters
   const [searchQuery, setSearchQuery] = useState("")
@@ -103,12 +91,14 @@ export default function AdminBookingsPage() {
   const fetchBookings = useCallback(async () => {
     try {
       setLoading(true)
-      // Lascia che la cache del server gestisca la validità dei dati
-      // Aggiungi timestamp per evitare cache del browser in sviluppo
-      const cacheBuster = process.env.NODE_ENV === 'development' ? `?_t=${Date.now()}` : ''
-      const response = await fetch(`/api/admin/bookings${cacheBuster}`, {
+      // Add cache-busting to prevent stale data
+      const response = await fetch(`/api/admin/bookings?t=${Date.now()}`, {
+        cache: 'no-store',
         credentials: 'include', // Include cookies in the request
-        cache: 'no-store', // Disabilita cache del browser per admin
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        }
       })
       
       if (!response.ok) {
@@ -117,6 +107,7 @@ export default function AdminBookingsPage() {
       
       const data = await response.json()
       const fetchedBookings = data.bookings || []
+      console.log('Fetched bookings:', fetchedBookings.length, fetchedBookings)
       setBookings(fetchedBookings)
     } catch (error) {
       console.error("Error fetching bookings:", error)
@@ -125,41 +116,30 @@ export default function AdminBookingsPage() {
     }
   }, [])
 
-  // Memoizza "today" per evitare di calcolarlo ad ogni render
-  const today = useMemo(() => DateTime.now().setZone("Europe/Rome").startOf("day"), [])
-
-  // Ottimizza il filtering con useMemo invece di useCallback
-  const filteredBookings = useMemo(() => {
+  const applyFilters = useCallback(() => {
     // Filter out past bookings first
+    const today = DateTime.now().setZone("Europe/Rome").startOf("day")
+    console.log('Today (Europe/Rome):', today.toISO())
     let filtered = bookings.filter(booking => {
-      if (!booking.date) {
-        return false
-      }
-      
       const bookingDate = DateTime.fromISO(booking.date).setZone("Europe/Rome").startOf("day")
-      
-      if (!bookingDate.isValid) {
-        return false
-      }
-      
-      // Usa toMillis() per confronto numerico più affidabile
-      const isFuture = bookingDate.toMillis() >= today.toMillis()
-      
+      const isFuture = bookingDate >= today
       // Escludi anche le prenotazioni cancellate
       const isNotCancelled = booking.status !== "cancelled"
-      
+      if (!isFuture) {
+        console.log('Filtered out past booking:', booking.date, bookingDate.toISO(), 'vs', today.toISO())
+      }
       return isFuture && isNotCancelled
     })
+    console.log('Total bookings:', bookings.length, 'After date and status filter:', filtered.length)
 
-    // Search filter - cerca nei campi snapshot della prenotazione
+    // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(booking => {
-        const firstName = (booking.customerFirstName || '').toLowerCase()
-        const lastName = (booking.customerLastName || '').toLowerCase()
-        const email = (booking.customer?.email || '').toLowerCase()
-        return firstName.includes(query) || lastName.includes(query) || email.includes(query)
-      })
+      filtered = filtered.filter(booking => 
+        booking.customer?.firstName.toLowerCase().includes(query) ||
+        booking.customer?.lastName.toLowerCase().includes(query) ||
+        booking.customer?.email.toLowerCase().includes(query)
+      )
     }
 
     // Status filter
@@ -179,12 +159,14 @@ export default function AdminBookingsPage() {
     }
 
     // Sort by date/time ascending (upcoming first)
-    return [...filtered].sort((a, b) => {
+    filtered.sort((a, b) => {
       const dateA = DateTime.fromISO(a.startsAt).setZone("Europe/Rome")
       const dateB = DateTime.fromISO(b.startsAt).setZone("Europe/Rome")
       return dateA.toMillis() - dateB.toMillis()
     })
-  }, [bookings, dateFilter, searchQuery, statusFilter, userTypeFilter, today])
+
+    setFilteredBookings(filtered)
+  }, [bookings, dateFilter, searchQuery, statusFilter, userTypeFilter])
 
   const loadBlackouts = useCallback(async () => {
     try {
@@ -200,8 +182,13 @@ export default function AdminBookingsPage() {
 
   const fetchTotalMaestroOwed = useCallback(async () => {
     try {
-      const response = await fetch(`/api/admin/maestri`, {
+      const response = await fetch(`/api/admin/maestri?t=${Date.now()}`, {
+        cache: 'no-store',
         credentials: 'include',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        }
       })
       
       if (!response.ok) {
@@ -221,11 +208,15 @@ export default function AdminBookingsPage() {
     fetchTotalMaestroOwed()
   }, [fetchBookings, loadBlackouts, fetchTotalMaestroOwed])
 
+  useEffect(() => {
+    applyFilters()
+  }, [applyFilters])
+
   const handleCancelBooking = async () => {
     if (!selectedBooking) return
     
     try {
-      const response = await fetch(`/api/admin/bookings/${selectedBooking.id}`, {
+      const response = await fetch(`/api/bookings/${selectedBooking.id}`, {
         method: "PATCH",
         credentials: 'include',
         headers: { "Content-Type": "application/json" },
@@ -236,8 +227,7 @@ export default function AdminBookingsPage() {
         setIsModalOpen(false)
         fetchBookings()
       } else {
-        const errorData = await response.json().catch(() => ({ error: "Errore sconosciuto" }))
-        alert(`Errore durante la cancellazione della prenotazione: ${errorData.error || "Errore sconosciuto"}`)
+        alert("Errore durante la cancellazione della prenotazione")
       }
     } catch (error) {
       console.error("Error cancelling booking:", error)
@@ -281,82 +271,42 @@ export default function AdminBookingsPage() {
     }
   }
 
-  const handleBookingClick = async (booking: Booking) => {
+  const handleBookingClick = (booking: Booking) => {
     setSelectedBooking(booking)
+    setAdminNotes(booking.adminNotes || "")
     setIsModalOpen(true)
-    
-    // Se è una prenotazione "lezione-maestro", recupera il payment
-    if (booking.activityType === "lezione-maestro") {
-      setLoadingPayment(true)
-      try {
-        const response = await fetch(`/api/admin/maestri/bookings/${booking.id}`, {
-          credentials: 'include',
-        })
-        
-        if (response.ok) {
-          const data = await response.json()
-          setMaestroPayment(data.payment)
-        } else {
-          setMaestroPayment(null)
-        }
-      } catch (error) {
-        console.error("Error fetching maestro payment:", error)
-        setMaestroPayment(null)
-      } finally {
-        setLoadingPayment(false)
-      }
-    } else {
-      setMaestroPayment(null)
-    }
   }
-  
-  const handleMarkAsPaid = async () => {
-    if (!selectedBooking || !maestroPayment) return
-    
+
+  const handleSaveAdminNotes = async () => {
+    if (!selectedBooking) return
+
+    setIsSavingNotes(true)
     try {
-      const response = await fetch(`/api/admin/maestri/bookings/${selectedBooking.id}`, {
-        method: "POST",
+      const response = await fetch(`/api/admin/bookings/${selectedBooking.id}`, {
+        method: "PATCH",
         credentials: 'include',
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "paid" })
+        body: JSON.stringify({ adminNotes: adminNotes || null })
       })
 
       if (response.ok) {
         const data = await response.json()
-        setMaestroPayment(data)
-        fetchTotalMaestroOwed() // Aggiorna il totale dovuto
+        // Aggiorna la prenotazione selezionata con i nuovi dati
+        setSelectedBooking({ ...selectedBooking, adminNotes: data.booking.adminNotes })
+        // Aggiorna anche nella lista delle prenotazioni
+        setBookings(bookings.map(b => 
+          b.id === selectedBooking.id 
+            ? { ...b, adminNotes: data.booking.adminNotes }
+            : b
+        ))
       } else {
-        const errorData = await response.json()
-        alert(`Errore: ${errorData.error || "Errore durante l'aggiornamento"}`)
+        alert("Errore durante il salvataggio delle note")
       }
     } catch (error) {
-      console.error("Error marking payment as paid:", error)
-      alert("Errore durante l'aggiornamento del pagamento")
-    }
-  }
-  
-  const handleMarkAsNotDue = async () => {
-    if (!selectedBooking || !maestroPayment) return
-    
-    try {
-      const response = await fetch(`/api/admin/maestri/bookings/${selectedBooking.id}`, {
-        method: "POST",
-        credentials: 'include',
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "not_due" })
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setMaestroPayment(data)
-        fetchTotalMaestroOwed() // Aggiorna il totale dovuto
-      } else {
-        const errorData = await response.json()
-        alert(`Errore: ${errorData.error || "Errore durante l'aggiornamento"}`)
-      }
-    } catch (error) {
-      console.error("Error marking payment as not due:", error)
-      alert("Errore durante l'aggiornamento del pagamento")
+      console.error("Error saving admin notes:", error)
+      alert("Errore durante il salvataggio delle note")
+    } finally {
+      setIsSavingNotes(false)
     }
   }
 
@@ -405,7 +355,7 @@ export default function AdminBookingsPage() {
                 <Euro className="h-6 w-6 text-orange-600" />
                 <div>
                   <CardTitle className="text-lg">Totale dovuto dai Maestri</CardTitle>
-                  <CardDescription>Lezioni del giorno stesso e passate non ancora saldate</CardDescription>
+                  <CardDescription>Lezioni passate non ancora saldate</CardDescription>
                 </div>
               </div>
                 <div className="flex items-center gap-4">
@@ -562,6 +512,7 @@ export default function AdminBookingsPage() {
                       <TableHead>Tipo</TableHead>
                       <TableHead>Giocatori</TableHead>
                       <TableHead>Attività</TableHead>
+                      <TableHead>Note Admin</TableHead>
                       <TableHead>Stato</TableHead>
                       <TableHead>Azioni</TableHead>
                     </TableRow>
@@ -571,12 +522,6 @@ export default function AdminBookingsPage() {
                       const today = DateTime.now().setZone("Europe/Rome").startOf("day")
                       const bookingDate = DateTime.fromISO(booking.date).setZone("Europe/Rome").startOf("day")
                       const isToday = bookingDate.hasSame(today, "day")
-                      
-                      // Usa SEMPRE i campi snapshot dalla prenotazione (customer_first_name, customer_last_name)
-                      // NON usare booking.customer.firstName/lastName
-                      const firstName = booking.customerFirstName ?? ''
-                      const lastName = booking.customerLastName ?? ''
-                      const displayName = [firstName, lastName].filter(Boolean).join(' ') || 'N/A'
                       
                       return (
                       <TableRow key={booking.id} className={isToday ? "bg-teal-50 hover:bg-teal-100 border-l-4 border-teal-600" : ""}>
@@ -588,7 +533,7 @@ export default function AdminBookingsPage() {
                           {booking.startTime} - {booking.endTime}
                         </TableCell>
                         <TableCell>
-                          {displayName}
+                          {booking.customer?.firstName} {booking.customer?.lastName}
                         </TableCell>
                         <TableCell className="text-sm text-gray-600">
                           {booking.customer?.email}
@@ -603,6 +548,15 @@ export default function AdminBookingsPage() {
                         </TableCell>
                         <TableCell>{booking.players}</TableCell>
                         <TableCell>{formatActivityType(booking.activityType)}</TableCell>
+                        <TableCell className="max-w-xs">
+                          {booking.adminNotes ? (
+                            <p className="text-sm text-gray-700 truncate" title={booking.adminNotes}>
+                              {booking.adminNotes}
+                            </p>
+                          ) : (
+                            <span className="text-sm text-gray-400">-</span>
+                          )}
+                        </TableCell>
                         <TableCell>
                           <Badge
                             variant={booking.status === "confirmed" ? "default" : "outline"}
@@ -646,13 +600,7 @@ export default function AdminBookingsPage() {
       </div>
 
       {/* Booking Detail Modal */}
-      <Dialog open={isModalOpen} onOpenChange={(open) => {
-        setIsModalOpen(open)
-        if (!open) {
-          // Reset payment quando si chiude il dialog
-          setMaestroPayment(null)
-        }
-      }}>
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Dettagli Prenotazione</DialogTitle>
@@ -667,7 +615,7 @@ export default function AdminBookingsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium text-gray-500">Nome</label>
-                  <p className="text-lg">{[selectedBooking.customerFirstName || '', selectedBooking.customerLastName || ''].filter(Boolean).join(' ') || 'N/A'}</p>
+                  <p className="text-lg">{selectedBooking.customer?.firstName} {selectedBooking.customer?.lastName}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-500">Email</label>
@@ -731,76 +679,42 @@ export default function AdminBookingsPage() {
                 </div>
               )}
 
-              {/* Maestro Payment Info */}
-              {selectedBooking.activityType === "lezione-maestro" && (
-                <div className="pt-4 border-t">
-                  <div className="mb-4">
-                    <label className="text-sm font-medium text-gray-500">Pagamento Maestro</label>
-                    {loadingPayment ? (
-                      <p className="text-lg text-gray-400">Caricamento...</p>
-                    ) : maestroPayment ? (
-                      <div className="mt-2 space-y-2">
-                        <div className="flex items-center gap-2">
-                          <Badge variant={maestroPayment.paid ? "default" : "secondary"}>
-                            {maestroPayment.paid ? "Saldato" : "Da saldare"}
-                          </Badge>
-                          {maestroPayment.notDue && (
-                            <Badge variant="outline">Non dovuto</Badge>
-                          )}
-                          <span className="text-lg font-semibold">€{maestroPayment.amount.toFixed(2)}</span>
-                        </div>
-                        {maestroPayment.paidAt && (
-                          <p className="text-sm text-gray-500">
-                            Saldato il: {formatDate(maestroPayment.paidAt)}
-                          </p>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-lg text-gray-400">Pagamento non ancora creato</p>
-                    )}
-                  </div>
-                </div>
-              )}
+              {/* Admin Notes */}
+              <div className="space-y-2 pt-4 border-t">
+                <Label htmlFor="adminNotes">Note Admin</Label>
+                <Textarea
+                  id="adminNotes"
+                  value={adminNotes}
+                  onChange={(e) => setAdminNotes(e.target.value)}
+                  placeholder="Aggiungi note per questa prenotazione..."
+                  rows={4}
+                />
+                <Button
+                  onClick={handleSaveAdminNotes}
+                  disabled={isSavingNotes}
+                  size="sm"
+                  variant="outline"
+                >
+                  {isSavingNotes ? "Salvataggio..." : "Salva Note"}
+                </Button>
+              </div>
 
               {/* Actions */}
               {selectedBooking.status === "confirmed" && (
-                <div className="flex flex-col gap-2 pt-4 border-t">
-                  {/* Maestro Payment Actions */}
-                  {selectedBooking.activityType === "lezione-maestro" && maestroPayment && !maestroPayment.paid && !maestroPayment.notDue && (
-                    <div className="flex gap-2 pb-2 border-b">
-                      <Button
-                        variant="default"
-                        onClick={handleMarkAsPaid}
-                        className="bg-green-600 hover:bg-green-700"
-                      >
-                        <Euro className="mr-2 h-4 w-4" />
-                        Segna come saldato
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={handleMarkAsNotDue}
-                      >
-                        Pagamento non dovuto
-                      </Button>
-                    </div>
-                  )}
-                  
-                  {/* Standard Actions */}
-                  <div className="flex gap-2">
-                    <Button
-                      variant="destructive"
-                      onClick={() => {
-                        if (confirm("Sei sicuro di voler cancellare questa prenotazione?")) {
-                          handleCancelBooking()
-                        }
-                      }}
-                    >
-                      Cancella Prenotazione
-                    </Button>
-                    <Button variant="outline" onClick={() => setIsModalOpen(false)}>
-                      Chiudi
-                    </Button>
-                  </div>
+                <div className="flex gap-2 pt-4 border-t">
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      if (confirm("Sei sicuro di voler cancellare questa prenotazione?")) {
+                        handleCancelBooking()
+                      }
+                    }}
+                  >
+                    Cancella Prenotazione
+                  </Button>
+                  <Button variant="outline" onClick={() => setIsModalOpen(false)}>
+                    Chiudi
+                  </Button>
                 </div>
               )}
             </div>
@@ -815,12 +729,6 @@ export default function AdminBookingsPage() {
             <Button variant="outline" className="w-full">
               <Calendar className="mr-2 h-4 w-4" />
               Storico Prenotazioni
-            </Button>
-          </Link>
-          <Link href="/admin/weekly-hours">
-            <Button variant="outline" className="w-full">
-              <Clock className="mr-2 h-4 w-4" />
-              Orari Settimanali
             </Button>
           </Link>
           <Link href="/admin/blackouts">

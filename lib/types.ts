@@ -31,12 +31,9 @@ export interface Booking {
   players: number
   status: BookingStatus
   notes?: string
+  adminNotes?: string
   createdAt: string
   updatedAt: string
-  // Campi snapshot dalla prenotazione (nome/cognome al momento della prenotazione)
-  // Usa string | null invece di string | undefined per garantire serializzazione JSON
-  customerFirstName: string | null
-  customerLastName: string | null
 }
 
 export interface BlackoutPeriod {
@@ -66,11 +63,6 @@ export interface AvailabilityResponse {
   availableSlots: string[] // Array of HH:mm strings (considerando durationMinutes richiesto)
   occupiedSlots: string[] // Array di slot occupati (considerando durationMinutes richiesto)
   allOccupiedSlots: string[] // Array di tutti gli slot occupati (indipendentemente dalla durata)
-  openingHours?: {
-    openTime: string // HH:mm format
-    closeTime: string // HH:mm format
-  } | null // null se il giorno è chiuso, undefined se non disponibile
-  hasFullDayBlackout?: boolean // true se c'è un blackout che copre tutto il giorno
 }
 
 export interface CreateBookingRequest {
@@ -91,6 +83,7 @@ export interface CreateBookingRequest {
   players: number
   resourceId?: string // default "trackman-io"
   notes?: string
+  adminNotes?: string
 }
 
 export interface CreateBookingResponse {
@@ -116,7 +109,6 @@ export interface MaestroPayment {
   amount: number
   paid: boolean
   paidAt?: string
-  notDue: boolean // Se true, il pagamento non è dovuto e non viene incluso nei calcoli
   createdAt: string
   updatedAt: string
 }
@@ -129,16 +121,5 @@ export interface MaestroSummary {
   pendingAmount: number
   lessonsCount: number
   paidLessonsCount: number
-}
-
-export interface WeeklyHours {
-  id: string
-  resourceId: string
-  dayOfWeek: number // 0 = domenica, 1 = lunedì, ..., 6 = sabato
-  openTime: string // HH:mm format
-  closeTime: string // HH:mm format
-  isClosed: boolean
-  createdAt: string
-  updatedAt: string
 }
 

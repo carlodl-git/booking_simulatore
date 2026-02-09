@@ -1,5 +1,5 @@
 import { supabaseAdmin } from './supabase'
-import { Booking, BookingWithCustomer, Customer, BlackoutPeriod, MaestroPayment, MaestroSummary, WeeklyHours } from './types'
+import { Booking, BookingWithCustomer, Customer, BlackoutPeriod, MaestroPayment, MaestroSummary } from './types'
 import { DateTime } from 'luxon'
 
 // Helper per logging solo in sviluppo
@@ -32,6 +32,7 @@ type BookingRow = {
   players: number
   status: 'confirmed' | 'cancelled'
   notes: string | null
+  admin_notes: string | null
   customer_first_name: string | null
   customer_last_name: string | null
   customer_phone: string | null
@@ -122,6 +123,7 @@ export async function getBookingsForDate(
       players,
       status,
       notes,
+      admin_notes,
       created_at,
       updated_at
     `)
@@ -202,6 +204,7 @@ export async function createBookingTx({
   activityType,
   players,
   notes,
+  adminNotes,
   customerFirstName,
   customerLastName,
   customerPhone,
@@ -215,6 +218,7 @@ export async function createBookingTx({
   activityType: '9' | '18' | 'pratica' | 'mini-giochi' | 'lezione-maestro'
   players: number
   notes?: string
+  adminNotes?: string
   customerFirstName?: string
   customerLastName?: string
   customerPhone?: string
@@ -232,6 +236,7 @@ export async function createBookingTx({
       players: players,
       status: 'confirmed',
       notes: notes || null,
+      admin_notes: adminNotes || null,
       customer_first_name: customerFirstName || null,
       customer_last_name: customerLastName || null,
       customer_phone: customerPhone || null,
@@ -276,6 +281,7 @@ export async function getBookingById(bookingId: string): Promise<Booking> {
       players,
       status,
       notes,
+      admin_notes,
       customer_first_name,
       customer_last_name,
       customer_phone,
@@ -339,6 +345,39 @@ export async function cancelBooking(bookingId: string): Promise<Booking> {
 }
 
 /**
+ * Aggiorna le note admin di una prenotazione
+ */
+export async function updateBookingAdminNotes(bookingId: string, adminNotes: string | null): Promise<Booking> {
+  const { data, error } = await supabaseAdmin
+    .from('bookings')
+    .update({
+      admin_notes: adminNotes,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', bookingId)
+    .select()
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      // Not found
+      const notFoundError: HttpError = new Error('Prenotazione non trovata')
+      notFoundError.code = 'NOT_FOUND'
+      notFoundError.httpStatus = 404
+      throw notFoundError
+    }
+
+    console.error('Errore nell\'aggiornamento note admin:', error)
+    const dbError: HttpError = new Error(`Errore database: ${error.message}`)
+    dbError.code = 'DB_ERROR'
+    dbError.httpStatus = 500
+    throw dbError
+  }
+
+  return mapBookingFromDB(data as BookingRow)
+}
+
+/**
  * Recupera tutte le prenotazioni con i dati del cliente
  */
 export async function getAllBookings(limit: number = 1000): Promise<BookingWithCustomer[]> {
@@ -355,6 +394,7 @@ export async function getAllBookings(limit: number = 1000): Promise<BookingWithC
       players,
       status,
       notes,
+      admin_notes,
       customer_first_name,
       customer_last_name,
       customer_phone,
@@ -467,6 +507,7 @@ function mapBookingFromDB(row: BookingRow): Booking {
     players: row.players,
     status: row.status,
     notes: row.notes ?? undefined,
+    adminNotes: row.admin_notes ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     // Include snapshot fields se presenti (usa null invece di undefined per la serializzazione JSON)
@@ -665,24 +706,10 @@ type MaestroPaymentRow = {
  * e crea/aggiorna i record di pagamento se non esistono
  */
 export async function syncMaestroPayments(): Promise<void> {
-  // Includiamo tutte le lezioni del giorno stesso (anche quelle future) nel totale dovuto
-  // Questo permette alle lezioni di apparire nel totale dovuto il giorno stesso in cui sono programmate
-  const now = DateTime.now().setZone("Europe/Rome")
-  const today = now.startOf("day")
+  const today = DateTime.now().setZone("Europe/Rome").startOf("day")
   const endOfToday = today.endOf("day")
   
-  // Converti la fine del giorno in UTC per la query al database
-  // endOfToday è già in Europe/Rome, quindi toUTC() lo converte correttamente in UTC
-  const endOfTodayUTC = endOfToday.toUTC().toISO()!
-  
-  debugLog('[syncMaestroPayments] Recupero lezioni fino a:', {
-    today: today.toISO(),
-    endOfToday: endOfToday.toISO(),
-    endOfTodayUTC,
-  })
-  
-  // Recupera tutte le prenotazioni lezione-maestro fino alla fine del giorno corrente (incluso il giorno stesso) e non cancellate
-  // La query include tutte le lezioni con starts_at <= fine del giorno corrente, quindi anche quelle future del giorno stesso
+  // Recupera tutte le prenotazioni lezione-maestro fino alla fine del giorno corrente e non cancellate con i dati del customer
   const { data: bookings, error: bookingsError } = await supabaseAdmin
     .from('bookings')
     .select(`
@@ -694,7 +721,7 @@ export async function syncMaestroPayments(): Promise<void> {
     `)
     .eq('activity_type', 'lezione-maestro')
     .eq('status', 'confirmed')
-    .lte('starts_at', endOfTodayUTC)
+    .lte('starts_at', endOfToday.toISO()!)
     .order('starts_at', { ascending: false })
 
   if (bookingsError) {
@@ -924,34 +951,6 @@ export async function getMaestroPayments(maestroEmail: string): Promise<(Maestro
       booking,
     }
   })
-}
-
-/**
- * Recupera il pagamento maestro per una prenotazione specifica (booking_id)
- */
-export async function getMaestroPaymentByBookingId(bookingId: string): Promise<MaestroPayment | null> {
-  await syncMaestroPayments()
-
-  const { data: payment, error } = await supabaseAdmin
-    .from('maestro_payments')
-    .select('id, booking_id, maestro_name, maestro_email, amount, paid, paid_at, not_due, created_at, updated_at')
-    .eq('booking_id', bookingId)
-    .single()
-
-  if (error) {
-    if (error.code === 'PGRST116') {
-      // Not found - non esiste ancora un payment per questa prenotazione
-      return null
-    }
-    console.error('Errore nel recupero pagamento maestro:', error)
-    throw new Error(`Errore database: ${error.message}`)
-  }
-
-  if (!payment) {
-    return null
-  }
-
-  return mapMaestroPaymentFromDB(payment as MaestroPaymentRow)
 }
 
 /**
@@ -1199,220 +1198,4 @@ export async function getTotalRevenueFromPastBookings(): Promise<number> {
   }
 
   return (data as { total_revenue?: number })?.total_revenue || 0
-}
-
-// ==================== WEEKLY HOURS ====================
-
-type WeeklyHoursRow = {
-  id: string
-  resource_id: string
-  day_of_week: number
-  open_time: string // TIME format HH:mm:ss
-  close_time: string // TIME format HH:mm:ss
-  is_closed: boolean
-  created_at: string
-  updated_at: string
-}
-
-/**
- * Recupera tutti gli orari settimanali per una risorsa
- */
-export async function getWeeklyHours(resourceId: string = 'trackman-io'): Promise<WeeklyHours[]> {
-  const { data, error } = await supabaseAdmin
-    .from('weekly_hours')
-    .select('id, resource_id, day_of_week, open_time, close_time, is_closed, created_at, updated_at')
-    .eq('resource_id', resourceId)
-    .order('day_of_week', { ascending: true })
-
-  if (error) {
-    console.error('Errore nel recupero weekly hours:', error)
-    throw new Error(`Errore database: ${error.message}`)
-  }
-
-  const rows = (data ?? []) as WeeklyHoursRow[]
-  return rows.map(mapWeeklyHoursFromDB)
-}
-
-/**
- * Recupera gli orari per un giorno specifico della settimana
- */
-export async function getWeeklyHoursForDay(
-  dayOfWeek: number,
-  resourceId: string = 'trackman-io'
-): Promise<WeeklyHours | null> {
-  const { data, error } = await supabaseAdmin
-    .from('weekly_hours')
-    .select('id, resource_id, day_of_week, open_time, close_time, is_closed, created_at, updated_at')
-    .eq('resource_id', resourceId)
-    .eq('day_of_week', dayOfWeek)
-    .single()
-
-  if (error) {
-    if (error.code === 'PGRST116') {
-      // Not found
-      return null
-    }
-    console.error('Errore nel recupero weekly hours:', error)
-    throw new Error(`Errore database: ${error.message}`)
-  }
-
-  return mapWeeklyHoursFromDB(data as WeeklyHoursRow)
-}
-
-/**
- * Aggiorna o crea gli orari per un giorno della settimana (upsert)
- */
-export async function upsertWeeklyHours(
-  weeklyHours: {
-    resourceId?: string
-    dayOfWeek: number
-    openTime: string // HH:mm
-    closeTime: string // HH:mm
-    isClosed?: boolean
-  }
-): Promise<WeeklyHours> {
-  const resourceId = weeklyHours.resourceId || 'trackman-io'
-  
-  // Converti HH:mm in HH:mm:ss per il database
-  const openTime = weeklyHours.openTime.includes(':') && weeklyHours.openTime.split(':').length === 2
-    ? `${weeklyHours.openTime}:00`
-    : weeklyHours.openTime
-  
-  const closeTime = weeklyHours.closeTime.includes(':') && weeklyHours.closeTime.split(':').length === 2
-    ? `${weeklyHours.closeTime}:00`
-    : weeklyHours.closeTime
-
-  const { data, error } = await supabaseAdmin
-    .from('weekly_hours')
-    .upsert(
-      {
-        resource_id: resourceId,
-        day_of_week: weeklyHours.dayOfWeek,
-        open_time: openTime,
-        close_time: closeTime,
-        is_closed: weeklyHours.isClosed ?? false,
-        updated_at: new Date().toISOString(),
-      },
-      {
-        onConflict: 'resource_id,day_of_week',
-        ignoreDuplicates: false,
-      }
-    )
-    .select()
-    .single()
-
-  if (error) {
-    console.error('Errore nell upsert weekly hours:', error)
-    throw new Error(`Errore database: ${error.message}`)
-  }
-
-  return mapWeeklyHoursFromDB(data as WeeklyHoursRow)
-}
-
-/**
- * Aggiorna gli orari per un giorno della settimana
- */
-export async function updateWeeklyHours(
-  id: string,
-  updates: {
-    openTime?: string // HH:mm
-    closeTime?: string // HH:mm
-    isClosed?: boolean
-  }
-): Promise<WeeklyHours> {
-  const updateData: Partial<WeeklyHoursRow> = {
-    updated_at: new Date().toISOString(),
-  }
-  
-  if (updates.openTime !== undefined) {
-    const openTime = updates.openTime.includes(':') && updates.openTime.split(':').length === 2
-      ? `${updates.openTime}:00`
-      : updates.openTime
-    updateData.open_time = openTime
-  }
-  
-  if (updates.closeTime !== undefined) {
-    const closeTime = updates.closeTime.includes(':') && updates.closeTime.split(':').length === 2
-      ? `${updates.closeTime}:00`
-      : updates.closeTime
-    updateData.close_time = closeTime
-  }
-  
-  if (updates.isClosed !== undefined) {
-    updateData.is_closed = updates.isClosed
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from('weekly_hours')
-    .update(updateData)
-    .eq('id', id)
-    .select()
-    .single()
-
-  if (error) {
-    if (error.code === 'PGRST116') {
-      throw new Error('Weekly hours non trovati')
-    }
-    console.error('Errore nell\'aggiornamento weekly hours:', error)
-    throw new Error(`Errore database: ${error.message}`)
-  }
-
-  return mapWeeklyHoursFromDB(data as WeeklyHoursRow)
-}
-
-/**
- * Helper: Mappa i dati dal database al tipo WeeklyHours
- */
-function mapWeeklyHoursFromDB(row: WeeklyHoursRow): WeeklyHours {
-  return {
-    id: row.id,
-    resourceId: row.resource_id,
-    dayOfWeek: row.day_of_week,
-    // Converti HH:mm:ss in HH:mm
-    openTime: row.open_time.substring(0, 5),
-    closeTime: row.close_time.substring(0, 5),
-    isClosed: row.is_closed,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  }
-}
-
-/**
- * Recupera gli orari di apertura/chiusura per una data specifica
- * Ritorna null se il giorno è chiuso o se non ci sono orari configurati
- */
-export async function getOpeningHoursForDate(
-  date: string, // YYYY-MM-DD
-  resourceId: string = 'trackman-io'
-): Promise<{ openTime: string; closeTime: string } | null> {
-  const dateObj = DateTime.fromISO(date, { zone: 'Europe/Rome' })
-  // Converti Luxon weekday (1-7, lun-dom) a 0-6 (dom-sab)
-  // Luxon: 1=lun, 2=mar, 3=mer, 4=gio, 5=ven, 6=sab, 7=dom
-  // DB: 0=dom, 1=lun, 2=mar, 3=mer, 4=gio, 5=ven, 6=sab
-  const luxonWeekday = dateObj.weekday
-  const dayOfWeek = luxonWeekday === 7 ? 0 : luxonWeekday
-  
-  debugLog('[getOpeningHoursForDate]', {
-    date,
-    luxonWeekday,
-    dayOfWeek,
-    resourceId,
-  })
-  
-  const weeklyHours = await getWeeklyHoursForDay(dayOfWeek, resourceId)
-  
-  debugLog('[getOpeningHoursForDate] weeklyHours retrieved:', weeklyHours)
-  
-  if (!weeklyHours || weeklyHours.isClosed) {
-    debugLog('[getOpeningHoursForDate] Day is closed or no hours found')
-    return null
-  }
-  
-  const result = {
-    openTime: weeklyHours.openTime,
-    closeTime: weeklyHours.closeTime,
-  }
-  
-  debugLog('[getOpeningHoursForDate] Returning:', result)
-  return result
 }

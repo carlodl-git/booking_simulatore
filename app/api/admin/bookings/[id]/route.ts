@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { cancelBooking } from "@/lib/repo"
+import { cancelBooking, updateBookingAdminNotes } from "@/lib/repo"
 import { BookingError } from "@/lib/types"
 
 // Route per modifiche - non cacheabile ma non necessita force-dynamic
@@ -23,23 +23,29 @@ export async function PATCH(
     
     const body = await request.json()
 
-    // Verifica che il body contenga status=cancelled
-    if (body.status !== "cancelled") {
-      return NextResponse.json(
-        {
-          error: "Per cancellare una prenotazione, imposta status='cancelled'",
-          code: "INVALID_STATUS",
-        } as BookingError,
-        { status: 400 }
-      )
+    // Gestisci cancellazione
+    if (body.status === "cancelled") {
+      const booking = await cancelBooking(bookingId)
+      return NextResponse.json({ booking })
     }
 
-    // Cancella booking in Supabase
-    const booking = await cancelBooking(bookingId)
+    // Gestisci aggiornamento note admin
+    if (body.adminNotes !== undefined) {
+      const adminNotes = body.adminNotes === null || body.adminNotes === "" ? null : String(body.adminNotes)
+      const booking = await updateBookingAdminNotes(bookingId, adminNotes)
+      return NextResponse.json({ booking })
+    }
 
-    return NextResponse.json({ booking })
+    // Se non è né cancellazione né aggiornamento note, errore
+    return NextResponse.json(
+      {
+        error: "Richiesta non valida. Fornisci 'status: cancelled' o 'adminNotes'",
+        code: "INVALID_REQUEST",
+      } as BookingError,
+      { status: 400 }
+    )
   } catch (error: unknown) {
-    console.error("Errore nella cancellazione prenotazione:", error)
+    console.error("Errore nell'aggiornamento prenotazione:", error)
 
     const httpError =
       typeof error === "object" && error !== null

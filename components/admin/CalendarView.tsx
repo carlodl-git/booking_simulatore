@@ -30,13 +30,11 @@ interface Booking {
   activityType: string
   players: number
   notes?: string
+  adminNotes?: string
   status: string
   createdAt: string
   updatedAt: string
   customer: Customer
-  // Campi snapshot dalla prenotazione (nome/cognome al momento della prenotazione)
-  customerFirstName: string | null
-  customerLastName: string | null
 }
 
 interface Blackout {
