@@ -117,6 +117,7 @@ export interface MaestroPayment {
   amount: number
   paid: boolean
   paidAt?: string
+  notDue?: boolean
   createdAt: string
   updatedAt: string
 }
