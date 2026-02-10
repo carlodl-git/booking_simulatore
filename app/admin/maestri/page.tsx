@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import { DateTime } from "luxon"
 import { ArrowLeft, RefreshCw, LogOut, Euro, CheckCircle, XCircle, Calendar, X } from "lucide-react"
 import Link from "next/link"
@@ -37,6 +39,7 @@ interface MaestroPayment {
     date: string
     startTime: string
     endTime: string
+    adminNotes?: string
     customer: {
       firstName: string
       lastName: string
@@ -60,6 +63,10 @@ export default function MaestriPage() {
   const [loadingPayments, setLoadingPayments] = useState(false)
   const [startDate, setStartDate] = useState<Date | undefined>(undefined)
   const [endDate, setEndDate] = useState<Date | undefined>(undefined)
+  const [selectedBookingForNotes, setSelectedBookingForNotes] = useState<{ bookingId: string; adminNotes: string } | null>(null)
+  const [isNotesModalOpen, setIsNotesModalOpen] = useState(false)
+  const [adminNotes, setAdminNotes] = useState<string>("")
+  const [isSavingNotes, setIsSavingNotes] = useState(false)
 
   const fetchSummaries = useCallback(async () => {
     try {
@@ -235,6 +242,43 @@ export default function MaestriPage() {
       window.location.href = "/admin/login"
     } catch (error) {
       console.error("Error logging out:", error)
+    }
+  }
+
+  const handleEditNotes = (payment: MaestroPayment) => {
+    setSelectedBookingForNotes({ bookingId: payment.booking.id, adminNotes: payment.booking.adminNotes || "" })
+    setAdminNotes(payment.booking.adminNotes || "")
+    setIsNotesModalOpen(true)
+  }
+
+  const handleSaveAdminNotes = async () => {
+    if (!selectedBookingForNotes) return
+
+    setIsSavingNotes(true)
+    try {
+      const response = await fetch(`/api/admin/bookings/${selectedBookingForNotes.bookingId}`, {
+        method: "PATCH",
+        credentials: 'include',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminNotes: adminNotes || null })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Aggiorna la lista dei pagamenti
+        if (selectedMaestroEmail) {
+          await fetchMaestroPayments(selectedMaestroEmail)
+        }
+        setIsNotesModalOpen(false)
+        setSelectedBookingForNotes(null)
+      } else {
+        alert("Errore durante il salvataggio delle note")
+      }
+    } catch (error) {
+      console.error("Error saving admin notes:", error)
+      alert("Errore durante il salvataggio delle note")
+    } finally {
+      setIsSavingNotes(false)
     }
   }
 
@@ -475,6 +519,7 @@ export default function MaestriPage() {
                       <TableHead>Data</TableHead>
                       <TableHead>Orario</TableHead>
                       <TableHead>Cliente</TableHead>
+                      <TableHead>Note Admin</TableHead>
                       <TableHead>Importo</TableHead>
                       <TableHead>Stato</TableHead>
                       <TableHead>Azioni</TableHead>
@@ -491,6 +536,23 @@ export default function MaestriPage() {
                         </TableCell>
                         <TableCell>
                           {payment.booking.customer.firstName} {payment.booking.customer.lastName}
+                        </TableCell>
+                        <TableCell className="max-w-xs">
+                          {payment.booking.adminNotes ? (
+                            <p className="text-sm text-gray-700 truncate" title={payment.booking.adminNotes}>
+                              {payment.booking.adminNotes}
+                            </p>
+                          ) : (
+                            <span className="text-sm text-gray-400">-</span>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="mt-1 text-xs"
+                            onClick={() => handleEditNotes(payment)}
+                          >
+                            {payment.booking.adminNotes ? "Modifica" : "Aggiungi"}
+                          </Button>
                         </TableCell>
                         <TableCell>€{payment.amount.toFixed(2)}</TableCell>
                         <TableCell>
@@ -567,6 +629,49 @@ export default function MaestriPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Admin Notes Modal */}
+      <Dialog open={isNotesModalOpen} onOpenChange={setIsNotesModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Note Admin - Prenotazione</DialogTitle>
+            <DialogDescription>
+              Aggiungi o modifica le note admin per questa prenotazione
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="adminNotes">Note Admin</Label>
+              <Textarea
+                id="adminNotes"
+                value={adminNotes}
+                onChange={(e) => setAdminNotes(e.target.value)}
+                placeholder="Aggiungi note per questa prenotazione..."
+                rows={4}
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsNotesModalOpen(false)
+                  setSelectedBookingForNotes(null)
+                }}
+              >
+                Annulla
+              </Button>
+              <Button
+                onClick={handleSaveAdminNotes}
+                disabled={isSavingNotes}
+              >
+                {isSavingNotes ? "Salvataggio..." : "Salva Note"}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
