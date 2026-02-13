@@ -216,7 +216,7 @@ export default function AdminBookingsPage() {
     if (!selectedBooking) return
     
     try {
-      const response = await fetch(`/api/bookings/${selectedBooking.id}`, {
+      const response = await fetch(`/api/admin/bookings/${selectedBooking.id}`, {
         method: "PATCH",
         credentials: 'include',
         headers: { "Content-Type": "application/json" },
