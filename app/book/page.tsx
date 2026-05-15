@@ -510,6 +510,7 @@ export default function BookPage() {
                       onTimeSelect={(time) => setValue("time", time)}
                       availableSlots={availableSlots.length > 0 ? availableSlots : undefined}
                       occupiedSlots={occupiedSlots}
+                      openingHours={openingHours}
                     />
                     {/* Mostra gli orari di apertura/chiusura */}
                     {openingHours === null ? (
