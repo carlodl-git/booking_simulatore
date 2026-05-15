@@ -2,11 +2,15 @@
 
 import * as React from "react"
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
 
 interface TimeSlot {
   time: string
   available: boolean
+}
+
+interface OpeningHours {
+  openTime: string
+  closeTime: string
 }
 
 interface TimeSlotPickerProps {
@@ -14,45 +18,69 @@ interface TimeSlotPickerProps {
   onTimeSelect: (time: string) => void
   availableSlots?: TimeSlot[]
   occupiedSlots?: string[]
+  openingHours?: OpeningHours | null
   className?: string
 }
 
-// Genera gli slot orari dalle 9:30 alle 23:00 ogni 30 minuti
-function generateTimeSlots(occupiedSlots: string[] = []): TimeSlot[] {
-  const slots: TimeSlot[] = []
-  
-  // Normalizza gli slot occupati e converti in Set per lookup O(1)
-  const normalizedOccupiedSet = new Set(
-    occupiedSlots.map(slot => {
-      // Rimuovi eventuali secondi o millisecondi (es. "10:00:00" -> "10:00")
-      return slot.split(':').slice(0, 2).join(':')
-    })
-  )
-  
-  // Inizia alle 9:30
-  slots.push({
-    time: "09:30",
-    available: !normalizedOccupiedSet.has("09:30"),
-  })
-  
-  // Continua dalle 10:00 alle 22:30 ogni 30 minuti
-  for (let hour = 10; hour < 23; hour++) {
-    for (let minute = 0; minute < 60; minute += 30) {
-      const time = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`
-      slots.push({
-        time,
-        available: !normalizedOccupiedSet.has(time),
-      })
-    }
+const DEFAULT_OPEN = "09:30"
+const DEFAULT_CLOSE = "23:00"
+
+type SlotState = "selected" | "free" | "free_not_bookable" | "occupied"
+
+interface RenderSlot {
+  time: string
+  state: SlotState
+}
+
+function toMinutes(time: string): number {
+  const [h, m] = time.split(":").map(Number)
+  return h * 60 + m
+}
+
+function fromMinutes(total: number): string {
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`
+}
+
+function normalize(time: string): string {
+  return time.split(":").slice(0, 2).join(":")
+}
+
+function generateRange(openTime: string, closeTime: string): string[] {
+  const slots: string[] = []
+  const end = toMinutes(closeTime)
+  for (let t = toMinutes(openTime); t <= end; t += 30) {
+    slots.push(fromMinutes(t))
   }
-  
-  // Aggiungi 23:00 come ultimo slot
-  slots.push({
-    time: "23:00",
-    available: !normalizedOccupiedSet.has("23:00"),
-  })
-  
   return slots
+}
+
+interface Section {
+  label: string
+  slots: RenderSlot[]
+  freeCount: number
+}
+
+function groupBySection(slots: RenderSlot[]): Section[] {
+  const sections: Record<string, RenderSlot[]> = {
+    Mattina: [],
+    Pomeriggio: [],
+    Sera: [],
+  }
+  for (const slot of slots) {
+    const mins = toMinutes(slot.time)
+    if (mins < 13 * 60) sections["Mattina"].push(slot)
+    else if (mins < 18 * 60) sections["Pomeriggio"].push(slot)
+    else sections["Sera"].push(slot)
+  }
+  return Object.entries(sections)
+    .filter(([, list]) => list.length > 0)
+    .map(([label, list]) => ({
+      label,
+      slots: list,
+      freeCount: list.filter((s) => s.state === "free" || s.state === "selected").length,
+    }))
 }
 
 export function TimeSlotPicker({
@@ -60,37 +88,133 @@ export function TimeSlotPicker({
   onTimeSelect,
   availableSlots,
   occupiedSlots = [],
+  openingHours,
   className,
 }: TimeSlotPickerProps) {
-  // Se vengono passati slot custom, li usiamo, altrimenti generiamo quelli di default
-  const slots = availableSlots || generateTimeSlots(occupiedSlots)
+  const openTime = openingHours?.openTime ?? DEFAULT_OPEN
+  const closeTime = openingHours?.closeTime ?? DEFAULT_CLOSE
+
+  const occupiedSet = React.useMemo(
+    () => new Set(occupiedSlots.map(normalize)),
+    [occupiedSlots]
+  )
+
+  const bookableSet = React.useMemo(() => {
+    if (!availableSlots) return null
+    return new Set(
+      availableSlots.filter((s) => s.available).map((s) => normalize(s.time))
+    )
+  }, [availableSlots])
+
+  const slots: RenderSlot[] = React.useMemo(() => {
+    return generateRange(openTime, closeTime).map((time) => {
+      if (time === selectedTime) return { time, state: "selected" as const }
+      if (occupiedSet.has(time)) return { time, state: "occupied" as const }
+      if (bookableSet === null) return { time, state: "free" as const }
+      if (bookableSet.has(time)) return { time, state: "free" as const }
+      return { time, state: "free_not_bookable" as const }
+    })
+  }, [openTime, closeTime, selectedTime, occupiedSet, bookableSet])
+
+  const sections = groupBySection(slots)
+  const totalFree = sections.reduce((sum, s) => sum + s.freeCount, 0)
+
+  if (totalFree === 0) {
+    return (
+      <div className={cn("space-y-3", className)}>
+        <div className="text-sm font-medium">Seleziona un orario</div>
+        <div className="rounded-lg border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-muted-foreground">
+          Nessun orario disponibile per questa data
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={cn("space-y-3", className)}>
-      <div className="text-sm font-medium">Seleziona un orario</div>
-      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-        {slots.map((slot) => (
-          <Button
-            key={slot.time}
-            type="button"
-            variant={selectedTime === slot.time ? "default" : "outline"}
-            disabled={!slot.available}
-            onClick={() => slot.available && onTimeSelect(slot.time)}
-            className={cn(
-              "h-10",
-              selectedTime === slot.time && "bg-primary text-primary-foreground",
-              !slot.available && "opacity-50 cursor-not-allowed line-through"
-            )}
-          >
-            {slot.time}
-          </Button>
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium">Seleziona un orario</div>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-sm bg-emerald-100 ring-1 ring-emerald-300" />
+            disponibile
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-sm bg-slate-200 ring-1 ring-slate-300" />
+            occupato
+          </span>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        {sections.map((section, sectionIdx) => (
+          <div key={section.label}>
+            <div
+              className={cn(
+                "flex items-center justify-between bg-slate-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600",
+                sectionIdx > 0 && "border-t border-slate-200"
+              )}
+            >
+              <span>{section.label}</span>
+              <span className="font-normal normal-case text-slate-500">
+                {section.freeCount} {section.freeCount === 1 ? "libero" : "liberi"}
+              </span>
+            </div>
+            {section.slots.map((slot) => (
+              <SlotRow
+                key={slot.time}
+                slot={slot}
+                onSelect={() => onTimeSelect(slot.time)}
+              />
+            ))}
+          </div>
         ))}
       </div>
-      {slots.every((slot) => !slot.available) && (
-        <p className="text-sm text-muted-foreground text-center py-4">
-          Nessun orario disponibile per questa data
-        </p>
-      )}
     </div>
+  )
+}
+
+function SlotRow({
+  slot,
+  onSelect,
+}: {
+  slot: RenderSlot
+  onSelect: () => void
+}) {
+  const clickable = slot.state === "free" || slot.state === "selected"
+
+  const stateClasses: Record<SlotState, string> = {
+    selected:
+      "bg-emerald-600 text-white hover:bg-emerald-600 focus-visible:ring-emerald-700",
+    free:
+      "bg-emerald-50 text-emerald-900 hover:bg-emerald-100 focus-visible:ring-emerald-500",
+    free_not_bookable:
+      "bg-emerald-50/40 text-emerald-900/40 cursor-not-allowed",
+    occupied: "bg-slate-100 text-slate-500 cursor-not-allowed",
+  }
+
+  const label: Record<SlotState, string> = {
+    selected: "Selezionato",
+    free: "Disponibile",
+    free_not_bookable: "—",
+    occupied: "Occupato",
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={!clickable}
+      onClick={onSelect}
+      aria-label={`${slot.time} — ${label[slot.state]}`}
+      className={cn(
+        "flex w-full items-center text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1",
+        stateClasses[slot.state]
+      )}
+    >
+      <span className="w-14 shrink-0 px-3 py-2 text-sm font-medium tabular-nums">
+        {slot.time}
+      </span>
+      <span className="flex-1 px-3 py-2 text-sm">{label[slot.state]}</span>
+    </button>
   )
 }
