@@ -19,6 +19,7 @@ import { DatePicker } from "@/components/ui/date-picker"
 import { TimeSlotPicker } from "@/components/ui/time-slot-picker"
 import { ArrowLeft, Clock, Loader2, MessageCircle } from "lucide-react"
 import { DateTime } from "luxon"
+import { TIMEZONE } from "@/lib/availability"
 
 const bookingSchema = z.object({
   firstName: z.string().min(2, "Il nome deve avere almeno 2 caratteri"),
@@ -395,16 +396,19 @@ export default function BookPage() {
       // Converti la durata in minuti
       const durationMinutes = Math.round(parseFloat(data.duration) * 60)
       
-      // Crea il timestamp startsAt combinando data e orario in Europe/Rome
-      const selectedDateTime = new Date(data.date)
+      // Crea il timestamp startsAt in Europe/Rome.
+      // Luxon gestisce automaticamente l'offset CET/CEST (DST), evitando lo shift di +1h in estate.
       const [hours, minutes] = data.time.split(':').map(Number)
-      selectedDateTime.setHours(hours, minutes, 0, 0)
-      
-      // Converti in formato ISO con timezone Europe/Rome
-      const year = selectedDateTime.getFullYear()
-      const month = String(selectedDateTime.getMonth() + 1).padStart(2, '0')
-      const day = String(selectedDateTime.getDate()).padStart(2, '0')
-      const startsAt = `${year}-${month}-${day}T${data.time}:00+01:00`
+      const startsAt = DateTime.fromObject(
+        {
+          year: data.date.getFullYear(),
+          month: data.date.getMonth() + 1,
+          day: data.date.getDate(),
+          hour: hours,
+          minute: minutes,
+        },
+        { zone: TIMEZONE }
+      ).toISO()!
       
       // Prepara i dati per l'API
       const bookingData = {
